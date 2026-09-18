@@ -1,0 +1,20 @@
+{
+ "two_different_lengths": [
+  "short_5_out20",
+  "long_400_out20"
+ ],
+ "same_prompt_twice": [
+  "short_5_out20",
+  "short_5_out20"
+ ],
+ "mixed_8": [
+  "short_5_out20",
+  "long_400_out20",
+  "short_5_out300",
+  "block_exact_16",
+  "block_plus1_17",
+  "block_minus1_15",
+  "cross_block_gen_10",
+  "block_exact_32"
+ ]
+}

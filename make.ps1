@@ -8,8 +8,8 @@ switch ($Target) {
     & $vpy -m pip install --upgrade pip
     & $vpy -m pip install -r requirements.txt
   }
-  "test"    { Write-Host "not implemented (M0)" }
-  "serve"   { Write-Host "not implemented (M0)" }
+  "test"    { & $vpy -m pytest -q }
+  "serve"   { & $vpy -m uvicorn engine.api:app --port 8000 }
   "bench"   { Write-Host "not implemented (M6)" }
   "results" { Write-Host "not implemented (M6)" }
   default   { Write-Host "targets: setup test serve bench results" }
