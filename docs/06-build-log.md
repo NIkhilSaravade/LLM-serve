@@ -1,6 +1,6 @@
 # 06 — Build log
 
-**Current milestone: M3**
+**Current milestone: M4**
 
 ---
 
@@ -153,6 +153,72 @@ because full-size runs are too slow on CPU to repeat 3x across every configurati
 
 **Next:** M3, continuous batching.
 
+### 2026-09-19 — M3 — continuous batching
+
+**Goal today:** admit at every iteration instead of every batch; stream tokens; measure
+against M2.
+
+**Where I predicted per-row bugs would appear (before coding):** (1) position ids for a
+row that joined late, (2) the key-side mask when rows have different lengths, (3) a slot
+reused by a new request still holding the previous occupant's K/V. (3) is safe by
+construction: a slot is fully overwritten from position 0 by prefill and the mask hides
+everything past `total`. None of the three bit.
+
+**What I built:** continuous mode in `Scheduler._admit` (a slot freed this iteration is
+refilled the next; each admitted request gets its own prefill forward, then joins the
+decode batch), `EngineLoop` (scheduler on its own thread, requests handed over through a
+thread-safe inbox), `NaiveScheduler` (so the HTTP server can also serve the M0 baseline),
+`engine/detokenizer.py` (sliding-window incremental decode that holds back incomplete
+UTF-8), a streaming NDJSON `POST /generate`, `GET /metrics`, `POST /metrics/reset`, and an
+open-loop Poisson harness in `scripts/bench_offline.py`.
+Two small additions outside the planned layout: `engine/config.py`, `engine/detokenizer.py`.
+
+**Tests:** every fixture through the continuous engine, the three batch cases, and the
+hard one: the `mixed_8` set arriving at iterations `[0,0,3,5,8,13,21,34]` with
+`max_batch` 2, 3 and 5, so neighbours join and leave mid-generation. All passed first time,
+as did a streamed-text-equals-decoded-tokens test with emoji/CJK and a detokenizer unit test.
+
+**What broke, and why:** nothing in correctness. One trap avoided: continuous mode needs
+`max_batch - len(running)` computed *after* retiring, otherwise a just-finished row's slot
+is not offered to the queue until the following iteration.
+
+**Number (open-loop Poisson, workload B scaled, 40 requests, max_batch 16, contiguous):**
+
+| rate req/s | mode | tok/s | goodput req/s | p99 TTFT s |
+|---|---|---|---|---|
+| 1 | static | 72.8 | 0.66 | 5.01 |
+| 1 | continuous | 80.6 | 1.39 | 0.15 |
+| 2 | static | 132.4 | 1.94 | 2.86 |
+| 2 | continuous | 147.3 | 2.53 | 0.14 |
+| 3 | static | 160.5 | 1.66 | 3.92 |
+| 3 | continuous | 199.5 | 3.43 | 0.16 |
+| 4 | static | 180.8 | 1.48 | 4.06 |
+| 4 | continuous | 235.7 | 4.05 | 0.70 |
+
+Goodput uses SLO p99-style per-request thresholds TTFT <= 2 s and TPOT <= 200 ms, chosen
+before measuring. Continuous wins on every row; the biggest gap is TTFT, because a request
+no longer waits for a batch to drain.
+
+Slot utilisation only means something when work is always waiting, so it was measured
+separately with a saturating burst (96 requests, max_batch 8): **static 0.427, continuous
+0.937**, throughput 169.8 vs 231.0 tok/s (+36%). Continuous does not reach 100% because the
+tail of the burst drains. In the open-loop rows utilisation is low (0.13-0.50) simply
+because 16 slots were never full at these offered loads; that is not a scheduler defect.
+
+**Measured weakness (docs asked for this):** attention padding waste under continuous
+batching is **0.39** (39% of attended key width is padding) versus 0.14 for static in the
+same burst, because rows are at very different lengths and everything is padded to the
+longest. This is the cost of the padded-not-ragged design. Long-prefill stall: a single
+800-token prompt injected into steady 2 req/s load raised the worst inter-token gap seen by
+other requests from 0.141 s to **0.374 s** (prefill of the 800-token prompt alone takes
+`prefill_800_tokens_s` in the JSON). The p99 inter-token gap did NOT rise (0.097 vs 0.073),
+so the stall is a single event, visible in the max but not in p99 for one injection. Chunked
+prefill is the stretch fix.
+
+`results/m3_continuous.json`.
+
+**Next:** M4, paged KV cache.
+
 ---
 
 ## Milestone summary table
@@ -165,7 +231,7 @@ write-up.
 | M0 baseline | 2026-09-19 | 13.06 tok/s (noisy: 12.9-17.3) | first run 33% faster than the rest; warmup alone does not remove variance |
 | M1 KV cache | 2026-09-19 | 81.41 tok/s, 6.2x over M0 | golden test passed first time; runs agreed within 1% (M0 did not) |
 | M2 static batching | 2026-09-19 | 145 tok/s at batch 16 (2.5x batch 1), slot util 0.54 | an uninitialised pool made identical runs differ by 40%; page faults in the timed region |
-| M3 continuous batching | | | |
+| M3 continuous batching | 2026-09-19 | 231 vs 170 tok/s saturated (+36%), slot util 0.94 vs 0.43, p99 TTFT 0.70 s vs 4.06 s at 4 req/s | continuous batching pads 39% of attention width; one 800-token prefill doubled the worst token gap |
 | M4 paged cache | | | |
 | M5 preemption | | | |
 | M6 benchmarks + page | | | |

@@ -1,47 +1,118 @@
-"""FastAPI layer. M0: blocking, one request at a time."""
+"""FastAPI layer: turns HTTP requests into Request objects and streams tokens back.
+
+Protocol for POST /generate with stream=true is newline-delimited JSON:
+  {"token_id": 123, "text": " the"}      one line per token (text may be "" while a
+                                          multi-byte character is still incomplete)
+  {"done": true, "finish_reason": "length", "n_tokens": 64}
+"""
 from __future__ import annotations
 
-import threading
+import asyncio
+import json
+import time
 import uuid
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from engine.metrics import request_metrics
-from engine.model_runner import ModelRunner
+from engine.config import EngineConfig
+from engine.detokenizer import IncrementalDetokenizer
 from engine.request import Request
-
-app = FastAPI(title="llm-serve")
-_runner: ModelRunner | None = None
-# LIMITATION: M0 serialises requests behind a lock. Real concurrency arrives with
-# the scheduler in M2/M3.
-_lock = threading.Lock()
-
-
-def get_runner() -> ModelRunner:
-    global _runner
-    if _runner is None:
-        _runner = ModelRunner()
-    return _runner
+from engine.scheduler import Engine, EngineLoop
 
 
 class GenerateIn(BaseModel):
-    prompt: str
+    prompt: str | None = None
+    prompt_token_ids: list[int] | None = None   # the load generator sends ids directly
     max_new_tokens: int = 32
+    ignore_eos: bool = False                    # benchmarks fix the output length exactly
+    stream: bool = False
 
 
-@app.post("/generate")
-def generate(body: GenerateIn) -> dict:
-    runner = get_runner()
-    ids = runner.tokenizer.encode(body.prompt)
-    req = Request(request_id=uuid.uuid4().hex, prompt_token_ids=ids,
-                  max_new_tokens=body.max_new_tokens)
-    with _lock:
-        runner.run(req)
-    m = request_metrics(req)
-    return {
-        "request_id": req.request_id,
-        "token_ids": req.output_token_ids,
-        "text": runner.tokenizer.decode(req.output_token_ids),
-        "ttft_s": m.ttft, "tpot_s": m.tpot, "e2e_s": m.e2e,
-    }
+def create_app(cfg: EngineConfig | None = None) -> FastAPI:
+    state: dict = {}
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        c = cfg or EngineConfig.from_env()
+        engine = Engine(c)
+        loop = EngineLoop(engine)
+        loop.start()
+        state.update(cfg=c, engine=engine, loop=loop, t_reset=time.perf_counter())
+        yield
+        loop.stop()
+
+    app = FastAPI(title="llm-serve", lifespan=lifespan)
+
+    @app.get("/health")
+    def health() -> dict:
+        return {"ok": True, "config": state["cfg"].to_dict()}
+
+    @app.get("/metrics")
+    def metrics() -> dict:
+        eng: Engine = state["engine"]
+        return eng.sched.metrics.summary(time.perf_counter() - state["t_reset"])
+
+    @app.post("/metrics/reset")
+    def reset() -> dict:
+        state["engine"].sched.metrics.reset()
+        state["t_reset"] = time.perf_counter()
+        return {"ok": True}
+
+    @app.post("/generate")
+    async def generate(body: GenerateIn):
+        engine: Engine = state["engine"]
+        tok = engine.runner.tokenizer
+        if body.prompt_token_ids is not None:
+            ids = body.prompt_token_ids
+        elif body.prompt is not None:
+            ids = tok.encode(body.prompt)
+        else:
+            raise HTTPException(400, "give prompt or prompt_token_ids")
+        if not 0 < len(ids) < 1024:
+            raise HTTPException(400, "prompt must have 1..1023 tokens")
+
+        loop = asyncio.get_running_loop()
+        events: asyncio.Queue = asyncio.Queue()
+        req = Request(uuid.uuid4().hex, ids, body.max_new_tokens, ignore_eos=body.ignore_eos)
+        # The sink runs on the engine thread; hop back onto the event loop safely.
+        req.sink = lambda t, fin: loop.call_soon_threadsafe(events.put_nowait, (t, fin))
+        state["loop"].submit(req)
+        detok = IncrementalDetokenizer(tok)
+
+        async def events_iter():
+            n = 0
+            while True:
+                t, fin = await events.get()
+                n += 1
+                yield t, detok.push(t), fin, n
+                if fin:
+                    return
+
+        if body.stream:
+            async def ndjson():
+                async for t, text, fin, n in events_iter():
+                    yield json.dumps({"token_id": t, "text": text}) + "\n"
+                    if fin:
+                        tail = detok.flush()
+                        if tail:
+                            yield json.dumps({"token_id": None, "text": tail}) + "\n"
+                        yield json.dumps({"done": True, "finish_reason": req.finish_reason,
+                                          "n_tokens": n}) + "\n"
+            return StreamingResponse(ndjson(), media_type="application/x-ndjson")
+
+        text = ""
+        async for _, piece, fin, _ in events_iter():
+            text += piece
+        text += detok.flush()
+        return {"request_id": req.request_id, "token_ids": req.output_token_ids, "text": text,
+                "finish_reason": req.finish_reason,
+                "ttft_s": req.first_token_time - req.arrival_time,
+                "e2e_s": req.finish_time - req.arrival_time}
+
+    return app
+
+
+app = create_app()
