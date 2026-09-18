@@ -124,6 +124,43 @@ class ModelRunner:
         x = F.layer_norm(x[:, -1], (HIDDEN,), self.ln_f[0], self.ln_f[1], 1e-5)
         return (x @ self.wte.T)[0]
 
+    # ------------------------------------------------------------------ M2 (batched)
+    @torch.inference_mode()
+    def step_tokens(self, token_lists: list[list[int]], starts: list[int], pool,
+                    block_tables: list[list[int]]) -> list[int]:
+        """One forward step for a batch. Row i feeds `token_lists[i]` at positions
+        starts[i]..; returns the greedy next token for each row.
+
+        Every row has its OWN positions and its OWN mask: rows sit at different lengths
+        (row 3 at position 12, row 4 at 400) and padding must contribute nothing.
+        """
+        ns = [len(t) for t in token_lists]
+        acc = pool.access(block_tables, starts, ns)
+        b, t = acc.b, acc.t
+        ids = torch.zeros(b, t, dtype=torch.long)          # pad token id 0; never attended
+        for i, toks in enumerate(token_lists):
+            ids[i, :len(toks)] = torch.tensor(toks, dtype=torch.long)
+        x = self.wte[ids] + self.wpe[acc.positions()]      # [B, T, 768]
+        for li, w in enumerate(self.layers):
+            h = F.layer_norm(x, (HIDDEN,), w["ln_1.weight"], w["ln_1.bias"], 1e-5)
+            qkv = _linear(h, w["attn.c_attn.weight"], w["attn.c_attn.bias"])
+            q, k, v = qkv.split(HIDDEN, dim=-1)
+            q, k, v = (a.reshape(b, t, N_HEADS, HEAD_DIM).transpose(1, 2) for a in (q, k, v))
+            acc.write(li, k, v)
+            k_all, v_all = acc.gather(li)
+            a = F.scaled_dot_product_attention(q, k_all, v_all, attn_mask=acc.mask,
+                                               is_causal=acc.is_causal)
+            a = a.transpose(1, 2).reshape(b, t, HIDDEN)
+            x = x + _linear(a, w["attn.c_proj.weight"], w["attn.c_proj.bias"])
+            h = F.layer_norm(x, (HIDDEN,), w["ln_2.weight"], w["ln_2.bias"], 1e-5)
+            h = F.gelu(_linear(h, w["mlp.c_fc.weight"], w["mlp.c_fc.bias"]), approximate="tanh")
+            x = x + _linear(h, w["mlp.c_proj.weight"], w["mlp.c_proj.bias"])
+        last = x[torch.arange(b), torch.tensor(ns) - 1]    # last REAL token of each row
+        last = F.layer_norm(last, (HIDDEN,), self.ln_f[0], self.ln_f[1], 1e-5)
+        pad_frac = 1.0 - sum(acc.totals) / (b * acc.lk)
+        self.last_pad_frac = pad_frac
+        return torch.argmax(last @ self.wte.T, dim=-1).tolist()
+
     def generate_cached(self, prompt_token_ids: list[int], max_new_tokens: int,
                         ignore_eos: bool = False) -> list[int]:
         """M1: single sequence with our own contiguous KV cache."""

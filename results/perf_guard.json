@@ -1,0 +1,9 @@
+{
+  "note": "static, max_batch=4, workload B seed 99, 8 requests; best of 3",
+  "tok_per_s": 82.7752112309314,
+  "runs": [
+    79.73805356999166,
+    82.7752112309314,
+    81.93302450320549
+  ]
+}

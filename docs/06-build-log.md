@@ -1,6 +1,6 @@
 # 06 — Build log
 
-**Current milestone: M2**
+**Current milestone: M3**
 
 ---
 
@@ -94,6 +94,65 @@ same prompt and output length. `results/m1_kvcache.json`.
 
 **Next:** M2, static batching.
 
+### 2026-09-19 — M2 — static batching
+
+**Goal today:** a batch dimension with padding, masks and per-row positions; measure
+slot utilisation.
+
+**What I built:** `SlotPool` and `BatchAccess` in `engine/cache.py` (each request gets a
+full 1024-token contiguous slot; a batch reads/writes through an access object),
+`SlotManager` in `engine/block_manager.py`, `ModelRunner.step_tokens` (one batched
+forward for prefill or decode), `engine/scheduler.py` (static mode: admit only when the
+previous batch has fully drained, one padded prefill for the whole batch),
+`engine/config.py`, `scripts/workloads.py`, `scripts/bench_offline.py`, and
+`tests/test_perf_guard.py`. The batch-independence tests from M0 are now live.
+
+**Design decisions worth recording:**
+- Finished rows drop out of the compute; only their *slots* stay idle until the whole
+  batch drains. A naive server would keep computing padded finished rows, so this static
+  baseline is stronger than the common one and the M3 gain measured against it is
+  conservative.
+- Tokens are streamed as they are produced even in static mode (most servers return the
+  batch at the end), which is also generous to static batching.
+- Slot utilisation counts unfinished rows / max_batch, averaged over decode steps only.
+- Query t of row i sits at position start_i+t and may attend key j iff j <= start_i+t and
+  j < total_i. Single-row cases keep the exact M1 kernels (no mask / is_causal) so
+  numerics match the single-sequence path.
+
+**What broke, and why:** the golden and batch-independence tests passed first time
+(including a batch of 8 mixed lengths). The performance guard did not: it failed at
+~83 tok/s against a recorded 110, twice in a row. Wrong mental model: I assumed
+`torch.empty` for the pool was free. It is not: first-touch page faults land inside the
+timed region, and whether they happen depended on whether the allocator recycled memory
+from earlier engines in the same process. The same configuration ranged 145-205 tok/s
+at batch 16 depending on that. Fix: `torch.zeros` for pools, so pages are touched at
+startup as a real server would. After the fix, repeated runs agree within 1%. The 205
+figure was an artefact and is not reported. Lesson: allocate and touch memory before the
+timer starts.
+
+**Number:** static batching, workload B (scaled), 32 requests, closed-loop burst:
+
+| max_batch | tok/s | slot utilisation | attention padding waste |
+|---|---|---|---|
+| 1 | 57.7 | 1.00 | 0.00 |
+| 2 | 65.2 | 0.75 | 0.06 |
+| 4 | 85.1 | 0.60 | 0.13 |
+| 8 | 119.2 | 0.55 | 0.18 |
+| 16 | 145.0 | 0.54 | 0.26 |
+
+Batch 16 is 2.5x the throughput of batch 1, but slot utilisation is only 0.54. That is
+above the "well under 50%" the docs predicted: workload B is only moderately variable
+(lognormal sigma 0.7). Workload C should be worse; M6 measures it. `results/m2_static.json`.
+Prefill was 4.4 s of ~12.6 s at batch 16 with this prompt mix, a larger share than I
+expected. Batch 1 here (57.7) is below M1's 81.4 because these prompts are longer (median 64
+vs 5) and the time includes prefill.
+
+**Scope note recorded here:** workload lengths are scaled down ~3x from
+`docs/04-benchmark-methodology.md` (see `scripts/workloads.py`), decided before measuring,
+because full-size runs are too slow on CPU to repeat 3x across every configuration.
+
+**Next:** M3, continuous batching.
+
 ---
 
 ## Milestone summary table
@@ -105,7 +164,7 @@ write-up.
 |---|---|---|---|
 | M0 baseline | 2026-09-19 | 13.06 tok/s (noisy: 12.9-17.3) | first run 33% faster than the rest; warmup alone does not remove variance |
 | M1 KV cache | 2026-09-19 | 81.41 tok/s, 6.2x over M0 | golden test passed first time; runs agreed within 1% (M0 did not) |
-| M2 static batching | | | |
+| M2 static batching | 2026-09-19 | 145 tok/s at batch 16 (2.5x batch 1), slot util 0.54 | an uninitialised pool made identical runs differ by 40%; page faults in the timed region |
 | M3 continuous batching | | | |
 | M4 paged cache | | | |
 | M5 preemption | | | |
