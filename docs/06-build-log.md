@@ -1,6 +1,6 @@
 # 06 — Build log
 
-**Current milestone: M0**
+**Current milestone: M2**
 
 ---
 
@@ -63,6 +63,37 @@ others, so the 3-run median is the number to trust and the spread must be shown.
 
 **Next:** M1, own KV cache. Before coding, agree the decode-step position id.
 
+### 2026-09-19 — process note — building M1..M6 in one run
+
+The user asked for the whole project to be completed step by step with every step
+documented, overriding the "one milestone per session" habit in PROMPTS.md. The
+per-milestone gate is kept: golden tests green, a number in `results/`, a log entry
+and a commit at the end of each milestone. Each entry below is written when its
+milestone closes.
+
+### 2026-09-19 — M1 — own KV cache, single sequence
+
+**Goal today:** stop recomputing K/V for old tokens, with a cache that is ours.
+
+**Position id, agreed before coding:** prompt length P, decode step N (1-indexed):
+the token fed is output token N, which sits at position P+N-1 = `seq_len - 1`
+(seq_len counts the prompt plus every output token including that one). It writes
+its K/V to cache index P+N-1 and attends to P+N keys. Prefill produces output token 1.
+
+**What I built:** `engine/cache.py` (`ContiguousKVCache`, `[layers, 2, heads,
+max_len, head_dim]`), and in `engine/model_runner.py` our own GPT-2 forward pass
+(HF supplies weights only) with a prefill path (causal mask, start=0) and a decode
+path (one token, explicit position). `generate_cached` drives it.
+
+**What broke, and why:** nothing. All 8 fixtures matched on the first run, including
+the 400-token prompt. Decode-step logits are computed for the last token only, so the
+LM head is not applied to every prompt token during prefill.
+
+**Number:** 81.41 tok/s median (81.4 / 81.0 / 82.2) vs 13.06 for M0, a 6.2x speedup,
+same prompt and output length. `results/m1_kvcache.json`.
+
+**Next:** M2, static batching.
+
 ---
 
 ## Milestone summary table
@@ -73,7 +104,7 @@ write-up.
 | Milestone | Closed on | Headline number | Biggest surprise |
 |---|---|---|---|
 | M0 baseline | 2026-09-19 | 13.06 tok/s (noisy: 12.9-17.3) | first run 33% faster than the rest; warmup alone does not remove variance |
-| M1 KV cache | | | |
+| M1 KV cache | 2026-09-19 | 81.41 tok/s, 6.2x over M0 | golden test passed first time; runs agreed within 1% (M0 did not) |
 | M2 static batching | | | |
 | M3 continuous batching | | | |
 | M4 paged cache | | | |

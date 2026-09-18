@@ -35,6 +35,14 @@ def test_matches_reference(name, engine):
     assert out == fx["expected_token_ids"]  # exact list equality
 
 
+@pytest.mark.parametrize("name", sorted(FIXTURES))
+def test_cached_matches_reference(name, engine):
+    """M1: our own forward pass + our own KV cache, single sequence."""
+    fx = FIXTURES[name]
+    out = engine.generate_cached(fx["prompt_token_ids"], max_new_tokens=fx["max_new_tokens"])
+    assert out == fx["expected_token_ids"]
+
+
 @pytest.mark.parametrize("batch", sorted(BATCHES))
 def test_batch_independence(batch, engine):
     # Written now, live from M2: a request's output must not depend on its neighbours.

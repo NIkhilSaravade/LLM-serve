@@ -18,6 +18,7 @@ class Request:
     request_id: str
     prompt_token_ids: list[int]
     max_new_tokens: int
+    ignore_eos: bool = False  # benchmarks fix output length exactly (as vLLM's bench does)
     output_token_ids: list[int] = field(default_factory=list)
     state: RequestState = RequestState.WAITING
     arrival_time: float = field(default_factory=time.perf_counter)

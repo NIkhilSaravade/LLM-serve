@@ -1,0 +1,36 @@
+{
+  "milestone": "M1",
+  "description": "own KV cache, contiguous, batch size 1",
+  "prompt_tokens": 5,
+  "max_new_tokens": 100,
+  "repeats": [
+    {
+      "tokens": 100,
+      "seconds": 1.2282993999979226,
+      "tok_per_s": 81.41337527329992
+    },
+    {
+      "tokens": 100,
+      "seconds": 1.2346364000040921,
+      "tok_per_s": 80.99550604507412
+    },
+    {
+      "tokens": 100,
+      "seconds": 1.216029900002468,
+      "tok_per_s": 82.23482004825462
+    }
+  ],
+  "median_tok_per_s": 81.41337527329992,
+  "min_tok_per_s": 80.99550604507412,
+  "max_tok_per_s": 82.23482004825462,
+  "m0_median_tok_per_s": 13.06199102074581,
+  "speedup_vs_m0": 6.232845754065708,
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i7-14700K",
+    "logical_cores": 28,
+    "torch": "2.14.0+cpu",
+    "torch_threads": 4,
+    "python": "3.11.9",
+    "os": "Windows-10-10.0.26200-SP0"
+  }
+}
