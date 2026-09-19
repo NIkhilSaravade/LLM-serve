@@ -27,6 +27,9 @@ def load(name: str) -> list[dict]:
 
 def doc(path: str) -> str:
     p = ROOT / path
+    # docs/ is kept offline (git-ignored), so on a fresh clone or in CI there is nothing to check quotes against.
+    if not (ROOT / "docs").is_dir():
+        pytest.skip("docs/ is not in this checkout; quote checks run only where the docs exist")
     assert p.exists(), f"{path} is cited by the page but does not exist"
     return norm(p.read_text(encoding="utf-8"))
 
