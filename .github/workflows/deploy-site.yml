@@ -1,12 +1,10 @@
 name: deploy-site
 
-# Deploys the results page to Cloudflare Workers (static assets) only after the whole CI workflow has
-# passed on main. One-time setup is in docs/08-deploying-the-site.md.
+# ALTERNATIVE deploy path: Cloudflare Workers (static assets) driven from GitHub. The primary path is
+# Cloudflare Pages connected to this repository (docs/08-deploying-the-site.md), so this runs only when
+# started by hand (Actions tab, Run workflow) and needs the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
+# secrets. Do not enable both paths for the same domain.
 on:
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -19,21 +17,15 @@ permissions:
 jobs:
   deploy:
     name: build and deploy
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: production
       url: ${{ steps.deploy.outputs.deployment-url }}
     env:
-      # Repository variables (Settings > Secrets and variables > Actions > Variables), not secrets.
-      VITE_SITE_URL: ${{ vars.SITE_URL }}
-      VITE_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
       WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
