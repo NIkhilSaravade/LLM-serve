@@ -180,3 +180,79 @@ def test_dashboard_is_current():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert _json.loads(mod.OUT.read_text()) == _json.loads(_json.dumps(mod.dash))
+
+
+# ---------------------------------------------------------------- release machinery stays honest
+def _canary_docs() -> list[dict]:
+    return [d for f in ("analysis-template.yaml", "rollout.yaml", "prometheus.yaml")
+            for d in yaml.safe_load_all((DEPLOY / "overlays" / "canary" / f).read_text()) if d]
+
+
+def test_canary_analysis_only_queries_metrics_the_server_exposes(client):
+    exposed = _exposed_names(scrape(client))
+    template = next(d for d in _canary_docs() if d["kind"] == "AnalysisTemplate")
+    used: set[str] = set()
+    for m in template["spec"]["metrics"]:
+        used |= _queried_metrics(m["provider"]["prometheus"]["query"])
+    assert used and used - exposed == set(), f"analysis queries metrics the server does not expose: {used - exposed}"
+
+
+def test_canary_analysis_uses_the_alert_threshold_and_fails_closed():
+    template = next(d for d in _canary_docs() if d["kind"] == "AnalysisTemplate")
+    by_name = {m["name"]: m for m in template["spec"]["metrics"]}
+    alert = yaml.safe_load((DEPLOY / "prometheus" / "alerts.yml").read_text())
+    expr = next(r["expr"] for g in alert["groups"] for r in g["rules"] if r.get("alert") == "LLMHighRejectionRate")
+    threshold = float(re.search(r">\s*([0-9.]+)", expr).group(1))
+    # the gate that stops a release must not be looser than the alert that pages about it
+    assert f"< {threshold}" in by_name["rejection-ratio"]["successCondition"]
+    # a canary that receives no traffic proves nothing: silence must fail, not pass
+    assert "canary-receives-traffic" in by_name
+    assert by_name["canary-receives-traffic"]["consecutiveErrorLimit"] >= 1
+
+
+def test_the_label_the_analysis_filters_on_is_the_one_prometheus_attaches():
+    docs = _canary_docs()
+    template = next(d for d in docs if d["kind"] == "AnalysisTemplate")
+    config = next(d for d in docs if d["kind"] == "ConfigMap")
+    prom = config["data"]["prometheus.yml"]
+    assert 'target_label: pod_hash' in prom and "rollouts_pod_template_hash" in prom
+    assert all("pod_hash=" in m["provider"]["prometheus"]["query"] for m in template["spec"]["metrics"])
+
+
+def test_rollout_reuses_the_deployment_it_points_at():
+    rollout = next(d for d in _canary_docs() if d["kind"] == "Rollout")
+    ref = rollout["spec"]["workloadRef"]
+    base = yaml.safe_load((DEPLOY / "k8s" / "deployment.yaml").read_text())
+    assert (ref["kind"], ref["name"]) == (base["kind"], base["metadata"]["name"])
+    assert rollout["spec"]["strategy"]["canary"]["maxUnavailable"] == 0
+
+
+def test_production_overlay_renders_and_keeps_the_safety_settings():
+    import shutil
+    import subprocess
+    if not shutil.which("kubectl"):
+        pytest.skip("kubectl not installed")
+    out = subprocess.run(["kubectl", "kustomize", str(DEPLOY / "production")], capture_output=True, text=True, check=True).stdout
+    docs = [d for d in yaml.safe_load_all(out) if d]
+    kinds = {d["kind"] for d in docs}
+    assert {"Rollout", "AnalysisTemplate", "Deployment", "Service", "PodDisruptionBudget"} <= kinds
+    assert not any(d["kind"] == "HorizontalPodAutoscaler" for d in docs), "an HPA would fight the Rollout"
+    assert "REPLACE_WITH_GIT_SHA" in out, "the image must stay a placeholder until deploy time"
+    assert ":latest" not in out
+    secret_refs = [d for d in docs if d["kind"] == "Secret"]
+    assert secret_refs == [], "no secret may be committed; the tunnel token is created out of band"
+
+
+@pytest.mark.parametrize("overlay", ["overlays/canary", "production"])
+def test_every_namespaced_resource_lands_in_the_llm_serve_namespace(overlay):
+    """A base's `namespace:` only covers the base's own resources; anything an overlay adds needs its own. The first
+    canary drill caught Prometheus, the Rollout and the analysis template landing in `default`."""
+    import shutil
+    import subprocess
+    if not shutil.which("kubectl"):
+        pytest.skip("kubectl not installed")
+    out = subprocess.run(["kubectl", "kustomize", str(DEPLOY / overlay)], capture_output=True, text=True, check=True).stdout
+    cluster_scoped = {"Namespace", "ClusterRole", "ClusterRoleBinding", "CustomResourceDefinition"}
+    stray = [f'{d["kind"]}/{d["metadata"]["name"]}' for d in yaml.safe_load_all(out)
+             if d and d["kind"] not in cluster_scoped and d["metadata"].get("namespace") != "llm-serve"]
+    assert stray == [], f"resources outside the llm-serve namespace: {stray}"

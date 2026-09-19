@@ -1,0 +1,44 @@
+name: perf-calibrate
+
+# Measures the noise floor of the performance gate on the real CI runner: the SAME image on both sides (A/A), so any
+# difference is noise. Run this before trusting or changing the gate's rate or threshold, never after seeing a
+# candidate fail. The report is uploaded as an artifact and summarised in the job log.
+on:
+  workflow_dispatch:
+    inputs:
+      rate:
+        description: Offered load, requests per second
+        default: "3"
+      pairs:
+        description: Baseline/candidate pairs
+        default: "4"
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: bench/go.mod
+      - name: A/A run
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          img="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/llm-serve:stable"
+          docker pull "$img"
+          python scripts/perf_gate.py --baseline "$img" --candidate "$img" --cpus 3 \
+            --rate "${{ inputs.rate }}" --pairs "${{ inputs.pairs }}" --report-only --out results/perf_gate/aa_ci.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-calibration
+          path: results/perf_gate/

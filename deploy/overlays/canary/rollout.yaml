@@ -1,0 +1,37 @@
+# Canary rollout driven by the SLO. `workloadRef` reuses the existing Deployment's pod template, so the base
+# manifests stay the single source of truth: a release is still "change the Deployment's image or config".
+# Argo Rollouts then owns the pods, scales the Deployment to zero, and decides how far the release goes.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: llm-serve
+  labels: {app: llm-serve}
+spec:
+  replicas: 4
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: {app: llm-serve}
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llm-serve
+    scaleDown: onsuccess
+  strategy:
+    canary:
+      maxUnavailable: 0
+      maxSurge: 1
+      # LIMITATION: without an ingress controller or service mesh, Argo Rollouts splits traffic by replica
+      # count (1 of 4 pods = about 25%) and kube-proxy balances per connection. A production setup would use
+      # weighted routing (Istio, Gateway API, or an ingress) so the canary share is exact.
+      analysis:
+        startingStep: 1                       # judged as soon as the first canary pod is serving
+        templates: [{templateName: llm-serve-slo}]
+        args:
+          - name: canary-hash
+            valueFrom: {podTemplateHashValue: Latest}
+      steps:
+        - setWeight: 25
+        - pause: {duration: 60s}
+        - setWeight: 50
+        - pause: {duration: 60s}
+        # then 100%: promoted only if the analysis never failed.

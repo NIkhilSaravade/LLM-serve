@@ -1,0 +1,34 @@
+# The release gate. It asks Prometheus the same question the LLMHighRejectionRate alert asks, but only about the
+# canary's pods (the `pod_hash` label), and it FAILS CLOSED: a canary that receives no traffic proves nothing,
+# so silence is a failed analysis, not a pass. On failure Argo Rollouts aborts and returns all traffic to the
+# stable pods with no human involved.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: llm-serve-slo
+spec:
+  args:
+    - name: canary-hash
+  metrics:
+    - name: canary-receives-traffic
+      interval: 15s
+      initialDelay: 20s
+      failureLimit: 2
+      consecutiveErrorLimit: 6         # an empty result (no series yet) is an error, and errors also fail
+      successCondition: result[0] > 0.05
+      provider:
+        prometheus:
+          address: http://prometheus.llm-serve.svc:9090
+          query: sum(rate(llm_requests_total{pod_hash="{{args.canary-hash}}"}[30s]))
+    - name: rejection-ratio
+      interval: 15s
+      initialDelay: 20s
+      failureLimit: 1                  # a second bad reading fails the release
+      consecutiveErrorLimit: 6
+      successCondition: result[0] < 0.05      # same threshold as the LLMHighRejectionRate alert
+      provider:
+        prometheus:
+          address: http://prometheus.llm-serve.svc:9090
+          query: |
+            sum(rate(llm_requests_total{status="rejected",pod_hash="{{args.canary-hash}}"}[30s]))
+            / clamp_min(sum(rate(llm_requests_total{pod_hash="{{args.canary-hash}}"}[30s])), 1e-9)

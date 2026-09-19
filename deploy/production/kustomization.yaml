@@ -1,0 +1,32 @@
+# Production shape for ONE small VM running k3s (single-node Kubernetes). NOT DEPLOYED: nothing is running from this
+# overlay yet. It is validated in CI (renders, and passes a server-side dry-run against a real API server with the
+# Argo Rollouts CRDs), but it has never served real traffic. See scripts/provision_vm.sh and
+# .github/workflows/deploy-production.yml.
+#
+# Sizing target: 8 vCPU / 16 GiB. Four engine pods (3 stable + 1 canary during a rollout) at 1 CPU request each.
+# The canary overlay supplies the Rollout, the SLO analysis and Prometheus; this overlay only changes what
+# differs in production.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: llm-serve                 # the base sets it only for its own resources; everything added here needs it too
+resources:
+  - ../overlays/canary
+  - cloudflared.yaml
+  - deployer-rbac.yaml
+patches:
+  - target: {kind: Deployment, name: llm-serve}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: "1", memory: 1500Mi}, limits: {cpu: "2", memory: 2500Mi}}}
+      - {op: replace, path: /spec/template/spec/terminationGracePeriodSeconds, value: 60}
+  - target: {kind: ConfigMap, name: llm-serve-config}
+    patch: |-
+      - op: replace
+        path: /data/LLM_SERVE_CONFIG
+        value: '{"backend":"paged","batching":"continuous","max_batch":16,"kv_budget_mib":512,"block_size":16,"preemption":true,"max_queue":64}'
+      - {op: replace, path: /data/LLM_SERVE_THREADS, value: "2"}
+  # In production the load generator is only a liveness prober: enough traffic that the canary analysis always
+  # has evidence, far below what would swamp real users. LIMITATION: two concurrent prober requests cannot
+  # reproduce an overload, so the SLO analysis of a real release depends on real traffic being present too.
+  - target: {kind: Deployment, name: loadgen}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/env/0/value, value: "2"}

@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: loadgen, labels: {app: loadgen}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: loadgen}}
+  template:
+    metadata: {labels: {app: loadgen}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: loadgen
+          image: llm-serve            # the engine image already has Python; nothing extra to build or pull
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/load/cluster_load.py"]
+          env:
+            - {name: CONCURRENCY, value: "12"}
+          resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts: [{name: script, mountPath: /load}]
+      volumes:
+        - {name: script, configMap: {name: loadgen-script}}

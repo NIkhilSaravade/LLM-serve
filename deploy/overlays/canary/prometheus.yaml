@@ -1,0 +1,68 @@
+# Minimal Prometheus for the release analysis: scrapes the llm-serve pods and labels each series with the pod
+# template hash Argo Rollouts puts on every pod, which is how the analysis tells canary from stable.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: prometheus}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: prometheus-discovery}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: prometheus-discovery}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: prometheus-discovery}
+subjects: [{kind: ServiceAccount, name: prometheus}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: prometheus-config}
+data:
+  prometheus.yml: |
+    global: {scrape_interval: 5s, evaluation_interval: 15s}
+    scrape_configs:
+      - job_name: llm-serve
+        kubernetes_sd_configs:
+          - {role: pod, namespaces: {names: [llm-serve]}}
+        relabel_configs:
+          - {source_labels: [__meta_kubernetes_pod_label_app], regex: llm-serve, action: keep}
+          - {source_labels: [__meta_kubernetes_pod_ip], regex: (.+), replacement: "$1:8000", target_label: __address__}
+          - {source_labels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash], target_label: pod_hash}
+          - {source_labels: [__meta_kubernetes_pod_name], target_label: pod}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: prometheus, labels: {app: prometheus}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: prometheus}}
+  template:
+    metadata: {labels: {app: prometheus}}
+    spec:
+      serviceAccountName: prometheus
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.53.0
+          args: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=6h", "--storage.tsdb.path=/tmp/data"]
+          ports: [{name: web, containerPort: 9090}]
+          readinessProbe: {httpGet: {path: /-/ready, port: web}, periodSeconds: 5}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus}
+            - {name: data, mountPath: /tmp/data}
+      volumes:
+        - {name: config, configMap: {name: prometheus-config}}
+        - {name: data, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: prometheus}
+spec:
+  selector: {app: prometheus}
+  ports: [{name: web, port: 9090, targetPort: web}]

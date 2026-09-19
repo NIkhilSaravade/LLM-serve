@@ -1,0 +1,127 @@
+{
+  "verdict": "pass",
+  "reasons": [],
+  "baseline": "ghcr.io/nikhilsaravade/llm-serve:drill123",
+  "candidate": "ghcr.io/nikhilsaravade/llm-serve:drill123",
+  "config": {
+    "workload": "B",
+    "rate": 4.0,
+    "duration": 25,
+    "drain": 15,
+    "seed": 1,
+    "pairs": 4,
+    "cpus": "4",
+    "min_ratio": 0.85,
+    "min_baseline_goodput": 0.3
+  },
+  "median": {
+    "baseline": {
+      "goodput": 2.34,
+      "throughput": 176.33518424537078
+    },
+    "candidate": {
+      "goodput": 2.2,
+      "throughput": 168.1287237271444
+    }
+  },
+  "ratio": {
+    "goodput": 0.9401709401709403,
+    "throughput": 0.9534610148658303
+  },
+  "spread_within_side": {
+    "baseline_goodput": 0.06837606837606826,
+    "candidate_goodput": 0.0,
+    "baseline_throughput": 0.04897698614487456,
+    "candidate_throughput": 0.046355218384989835
+  },
+  "runs": [
+    {
+      "side": "baseline",
+      "run": 0,
+      "goodput": 2.4,
+      "throughput": 179.09989993191107,
+      "attainment": 0.6818181818181818,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 3.8473382167409405
+    },
+    {
+      "side": "candidate",
+      "run": 0,
+      "goodput": 2.2,
+      "throughput": 167.7918229103152,
+      "attainment": 0.625,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 5.665935716740943
+    },
+    {
+      "side": "candidate",
+      "run": 1,
+      "goodput": 2.2,
+      "throughput": 168.46562454397363,
+      "attainment": 0.625,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 5.533625116740943
+    },
+    {
+      "side": "baseline",
+      "run": 1,
+      "goodput": 2.36,
+      "throughput": 175.88539008480612,
+      "attainment": 0.6704545454545454,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 4.480004528366191
+    },
+    {
+      "side": "baseline",
+      "run": 2,
+      "goodput": 2.32,
+      "throughput": 176.78497840593548,
+      "attainment": 0.6590909090909091,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 4.606921363661868
+    },
+    {
+      "side": "candidate",
+      "run": 2,
+      "goodput": 2.2,
+      "throughput": 163.77703927597523,
+      "attainment": 0.625,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 6.240351484542487
+    },
+    {
+      "side": "candidate",
+      "run": 3,
+      "goodput": 2.2,
+      "throughput": 171.57068298113663,
+      "attainment": 0.625,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 5.1181929167409415
+    },
+    {
+      "side": "baseline",
+      "run": 3,
+      "goodput": 2.24,
+      "throughput": 170.46353405627164,
+      "attainment": 0.6363636363636364,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 5.302159716740942
+    }
+  ]
+}

@@ -104,6 +104,8 @@ jobs:
           kubectl kustomize deploy/k8s > /dev/null
           kubectl kustomize deploy/k8s/monitoring > /dev/null
           kubectl kustomize deploy/overlays/ci > /dev/null
+          kubectl kustomize deploy/overlays/canary > /dev/null
+          kubectl kustomize deploy/production > /dev/null
 
   container:
     name: image builds and serves

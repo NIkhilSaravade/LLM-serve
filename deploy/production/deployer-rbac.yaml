@@ -1,0 +1,44 @@
+# What the CD pipeline is allowed to do on the VM: manage this namespace and nothing else. The deploy workflow
+# authenticates as this ServiceAccount, never as cluster-admin, so a leaked deploy key cannot touch other
+# namespaces or the node.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: deployer}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: deployer}
+rules:
+  - apiGroups: ["", "apps", "policy", "autoscaling"]
+    resources: [configmaps, services, serviceaccounts, deployments, replicasets, pods, pods/log, poddisruptionbudgets, horizontalpodautoscalers]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["argoproj.io"]
+    resources: [rollouts, analysistemplates, analysisruns]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Creating a Role requires already holding what it grants (Kubernetes blocks privilege escalation), so this
+  # list has to include everything the manifests' own Roles contain: here, read access to pods for Prometheus.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: deployer}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: deployer}
+subjects: [{kind: ServiceAccount, name: deployer}]
+---
+# `kubectl apply` of a kustomize render includes the Namespace object; allow patching that one namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: llm-serve-deployer-namespace}
+rules:
+  - apiGroups: [""]
+    resources: [namespaces]
+    resourceNames: [llm-serve]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: llm-serve-deployer-namespace}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: llm-serve-deployer-namespace}
+subjects: [{kind: ServiceAccount, name: deployer, namespace: llm-serve}]

@@ -1,0 +1,27 @@
+# Public entry point: a Cloudflare Tunnel, so the VM opens no inbound port at all. The tunnel is "remotely managed":
+# in the Cloudflare dashboard (Zero Trust > Networks > Tunnels) create a tunnel and route
+#   api.nikhilsaravade.com  ->  http://llm-serve.llm-serve.svc:80
+# then store its token once, out of band, and never commit it:
+#   kubectl -n llm-serve create secret generic cloudflared-token --from-literal=token=<TOKEN>
+# Abuse protection for a public LLM endpoint belongs at Cloudflare (WAF rate-limiting rule on /generate,
+# see docs/07-operations.md) plus the engine's own 429 admission control.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: cloudflared, labels: {app: cloudflared}}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: cloudflared}}
+  template:
+    metadata: {labels: {app: cloudflared}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2024.9.1
+          args: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom: {secretKeyRef: {name: cloudflared-token, key: token}}
+          livenessProbe: {httpGet: {path: /ready, port: 2000}, periodSeconds: 10, failureThreshold: 3}
+          resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 128Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}

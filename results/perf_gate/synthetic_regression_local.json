@@ -1,0 +1,87 @@
+{
+  "verdict": "fail",
+  "reasons": [
+    "goodput ratio 0.304 < 0.85",
+    "throughput ratio 0.331 < 0.85"
+  ],
+  "baseline": "ghcr.io/nikhilsaravade/llm-serve:drill123",
+  "candidate": "ghcr.io/nikhilsaravade/llm-serve:drill123",
+  "config": {
+    "workload": "B",
+    "rate": 4.0,
+    "duration": 25,
+    "drain": 15,
+    "seed": 1,
+    "pairs": 2,
+    "cpus": "4",
+    "min_ratio": 0.85,
+    "min_baseline_goodput": 0.3,
+    "candidate_cpus": "2"
+  },
+  "median": {
+    "baseline": {
+      "goodput": 2.3,
+      "throughput": 171.66476966676532
+    },
+    "candidate": {
+      "goodput": 0.7,
+      "throughput": 56.81511795632277
+    }
+  },
+  "ratio": {
+    "goodput": 0.30434782608695654,
+    "throughput": 0.3309655095021067
+  },
+  "spread_within_side": {
+    "baseline_goodput": 0.08695652173913032,
+    "candidate_goodput": 0.05714285714285704,
+    "baseline_throughput": 0.0701840146749211,
+    "candidate_throughput": 0.07508327757423042
+  },
+  "runs": [
+    {
+      "side": "baseline",
+      "run": 0,
+      "goodput": 2.2,
+      "throughput": 165.64070831003573,
+      "attainment": 0.625,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 5.884444308797818
+    },
+    {
+      "side": "candidate",
+      "run": 0,
+      "goodput": 0.68,
+      "throughput": 54.68218532035916,
+      "attainment": 0.19318181818181818,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 13.495228590557033
+    },
+    {
+      "side": "candidate",
+      "run": 1,
+      "goodput": 0.72,
+      "throughput": 58.948050592286386,
+      "attainment": 0.20454545454545456,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 11.648012090557032
+    },
+    {
+      "side": "baseline",
+      "run": 1,
+      "goodput": 2.4,
+      "throughput": 177.68883102349494,
+      "attainment": 0.6818181818181818,
+      "offered": 88,
+      "rejected": 0,
+      "errors": 0,
+      "ttft_p99": 3.9415484732275594
+    }
+  ]
+}

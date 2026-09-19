@@ -1,0 +1,30 @@
+# CI-sized llm-serve plus the canary machinery: a Rollout, the SLO analysis, Prometheus and steady traffic.
+# Needs the Argo Rollouts controller in the cluster (scripts/canary_drill.sh installs a pinned version).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: llm-serve                 # the base sets it only for its own resources; everything added here needs it too
+resources:
+  - ../ci
+  - rollout.yaml
+  - analysis-template.yaml
+  - prometheus.yaml
+  - loadgen/loadgen.yaml
+configMapGenerator:
+  - name: loadgen-script
+    files: [loadgen/cluster_load.py]
+    options: {disableNameSuffixHash: true}
+# Four pods run at once (3 stable + 1 canary at the first step): shrink each so they fit a 4-vCPU runner.
+patches:
+  - target: {kind: Deployment, name: llm-serve}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 250m, memory: 700Mi}, limits: {cpu: "2", memory: 1400Mi}}}
+  - target: {kind: ConfigMap, name: llm-serve-config}
+    patch: |-
+      - op: replace
+        path: /data/LLM_SERVE_CONFIG
+        value: '{"backend":"paged","batching":"continuous","max_batch":8,"kv_budget_mib":128,"block_size":16,"preemption":true,"max_queue":64}'
+      - {op: replace, path: /data/LLM_SERVE_THREADS, value: "1"}
+images:
+  - name: llm-serve                    # only the loadgen still uses the bare name; the base already rewrote the rest
+    newName: ghcr.io/nikhilsaravade/llm-serve
+    newTag: REPLACE_WITH_GIT_SHA

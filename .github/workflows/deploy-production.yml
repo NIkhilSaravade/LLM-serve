@@ -1,0 +1,78 @@
+name: deploy-production
+
+# Deploys an already-released image to the production VM. NOT YET USED: no VM exists, so this workflow has never
+# run. It is manual on purpose (a person chooses when production changes), it pauses for the required reviewer of
+# the `production` environment, and it deploys by image DIGEST so what runs is exactly what the release pipeline
+# tested. The canary analysis (deploy/overlays/canary) decides how far the release goes; if it aborts the rollout,
+# this job fails and the stable pods keep serving.
+#
+# One-time setup: scripts/provision_vm.sh, then the secrets and variable listed at the end of its output.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag to deploy (a commit SHA, or `stable` for the last release that passed every gate)
+        default: stable
+        required: true
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: deploy ${{ inputs.image_tag }} with a canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: production
+      url: ${{ vars.PROD_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve the image to an immutable digest
+        id: img
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          repo="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/llm-serve"
+          digest="$(docker buildx imagetools inspect "$repo:${{ inputs.image_tag }}" --format '{{.Manifest.Digest}}')"
+          ref="$repo@$digest"
+          docker pull "$ref" >/dev/null
+          sha="$(docker run --rm --entrypoint printenv "$ref" GIT_SHA)"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying $ref (build $sha)"
+      - name: Configure SSH (host key is pinned, never trusted on first use)
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id
+          chmod 600 ~/.ssh/id
+          printf '%s\n' "${{ secrets.PROD_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Apply the manifests as the restricted deployer
+        run: |
+          SSH="ssh -i ~/.ssh/id -o StrictHostKeyChecking=yes ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_HOST }}"
+          kubectl kustomize deploy/production \
+            | sed "s#ghcr.io/nikhilsaravade/llm-serve:REPLACE_WITH_GIT_SHA#${{ steps.img.outputs.ref }}#g" \
+            | $SSH 'kubectl --kubeconfig ~/.kube/deployer.yaml apply -f -'
+      - name: Wait for the canary to be promoted or aborted
+        run: |
+          SSH="ssh -i ~/.ssh/id -o StrictHostKeyChecking=yes ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_HOST }}"
+          K='kubectl --kubeconfig ~/.kube/deployer.yaml -n llm-serve get rollout llm-serve -o'
+          for _ in $(seq 1 240); do
+            phase="$($SSH "$K jsonpath='{.status.phase}'")"
+            echo "rollout: $phase"
+            [ "$phase" = Healthy ] && exit 0
+            if [ "$phase" = Degraded ]; then
+              echo "Rollout aborted, stable pods keep serving:"; $SSH "$K jsonpath='{.status.message}'"; exit 1
+            fi
+            sleep 10
+          done
+          echo "timed out waiting for the rollout"; exit 1
+      - name: The public endpoint serves the build that was deployed
+        run: |
+          live="$(curl -sf "${{ vars.PROD_URL }}/version")"
+          echo "$live"
+          echo "$live" | grep -q "${{ steps.img.outputs.sha }}"

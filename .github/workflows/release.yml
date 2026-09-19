@@ -4,7 +4,11 @@ name: release
 #   publish  -> build one image per commit and push it to GHCR, tagged with the commit SHA (immutable)
 #   drill    -> deploy that exact image to a real Kubernetes cluster (kind), smoke-test it, ship a
 #               deliberately bad release, and require that it is contained and rolled back
-#   promote  -> only if the drill passed, move the moving `stable` tag to this SHA
+#   canary   -> Argo Rollouts canary under steady traffic: a good release must be promoted and a release that
+#               starts fine but breaches the SLO must be aborted by the analysis, with nobody intervening
+#   perf     -> A/B against the last `stable` image on the same runner; fail on a relative goodput or
+#               throughput regression beyond the calibrated noise (scripts/perf_gate.py)
+#   promote  -> only if ALL gates passed, move the moving `stable` tag to this SHA
 # What a "deploy" is here: a real rollout with the production manifests (scaled down) on an ephemeral
 # cluster. There is no long-lived production cluster.
 on:
@@ -94,9 +98,78 @@ jobs:
           kubectl -n llm-serve get pods,events -o wide || true
           kubectl -n llm-serve logs -l app=llm-serve --tail=80 --all-containers || true
 
+  canary:
+    name: canary with automatic abort on SLO breach
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: canary
+      - name: Pull the published image into the cluster
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "${{ needs.publish.outputs.image }}"
+          kind load docker-image "${{ needs.publish.outputs.image }}" --name canary
+      - name: Canary drill
+        run: scripts/canary_drill.sh "${{ needs.publish.outputs.image }}" "${{ needs.publish.outputs.sha }}"
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n llm-serve get rollout,rs,pods,analysisrun -o wide || true
+          kubectl -n llm-serve describe analysisrun || true
+          kubectl -n llm-serve logs deploy/loadgen --tail=20 || true
+          kubectl -n argo-rollouts logs deploy/argo-rollouts --tail=60 || true
+
+  perf:
+    name: performance gate vs the last stable release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: bench/go.mod
+      - name: Pull candidate and the last stable release
+        id: pull
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "${{ needs.publish.outputs.image }}"
+          stable="${{ needs.publish.outputs.image }}"; stable="${stable%:*}:stable"
+          if docker pull "$stable"; then echo "baseline=$stable" >> "$GITHUB_OUTPUT"
+          else echo "::notice::No stable release exists yet, so there is nothing to compare against. Skipping."; fi
+      - name: A/B on the same machine, interleaved
+        if: steps.pull.outputs.baseline != ''
+        run: >
+          python scripts/perf_gate.py
+          --baseline "${{ steps.pull.outputs.baseline }}" --candidate "${{ needs.publish.outputs.image }}"
+          --cpus 3 --pairs 3 --out results/perf_gate/${{ needs.publish.outputs.sha }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-gate
+          path: results/perf_gate/
+
   promote:
     name: mark as stable
-    needs: [publish, drill]
+    needs: [publish, drill, canary, perf]
     runs-on: ubuntu-latest
     permissions:
       packages: write
