@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from bench_m0 import cpu_name  # noqa: E402
-from workloads import WORKLOADS, make_requests  # noqa: E402
+from workloads import make_requests  # noqa: E402
 
 import torch  # noqa: E402
 from engine.config import EngineConfig  # noqa: E402

@@ -1,0 +1,9 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: llm-serve
+  labels: {app: llm-serve}
+spec:
+  minAvailable: 1        # node drains may take replicas one at a time
+  selector:
+    matchLabels: {app: llm-serve}

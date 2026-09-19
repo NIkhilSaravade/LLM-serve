@@ -417,6 +417,51 @@ all three workloads, block-size sweep, memory-budget sweep, overload chart, meth
 limitations; `./scripts/run_bench.sh` regenerates every JSON. Not verified: a stranger cloning the
 repo on another machine; only this machine was used.
 
+### 2026-09-19 — beyond M6 — operating it: containers, observability, deploy, CI
+
+**Goal:** make the project credible for MLOps / ML-platform roles, which screen for deployment and
+operations, not only for scheduler internals. Scope decision (rule 5): this is outside
+`docs/02-milestones.md` and was requested explicitly by the user; it adds no engine behaviour and
+changes no benchmark number.
+
+**What I built:** `engine/observability.py` (Prometheus counters and latency histograms, plus a
+scrape-time collector so queue depth, running batch and KV use are never stale);
+`engine/api.py` (`/metrics`, `/ready`, `/health` that fails if the scheduler thread died,
+`/version`, `X-Request-ID`, JSON request log lines, warmup before ready; the JSON summary the
+benchmark reads moved to `/stats`); `Dockerfile` (non-root, weights baked in, offline, one worker);
+`deploy/` (compose stack, Prometheus config and 12 rules, generated Grafana dashboard, Kubernetes
+base + monitoring overlays); `.github/workflows/ci.yml`; `docs/07-operations.md` (SLOs, error
+budget, capacity plan, autoscaling, rollout/rollback, runbooks, failure modes, security);
+`tests/test_ops.py` (14 tests).
+
+**Design choices worth recording:**
+- One source of truth: alerts live in `alerts.yml`; the Kubernetes PrometheusRule and the Grafana
+  dashboard are generated, and tests fail if they drift.
+- Tests cross-check dashboards and alerts against the live `/metrics` output, because the classic
+  failure is a dashboard querying a metric that does not exist.
+- 429 is treated as deliberate load shedding: excluded from latency SLIs, tracked by its own SLI.
+- Scale by replicas, never by uvicorn workers (each would load its own model and KV pool).
+
+**What broke, and why:**
+- My first plan had a `draining` flag nothing ever set. Removed it: uvicorn already drains in-flight
+  requests on SIGTERM, and the pod's `preStop` sleep handles routing.
+- The benchmark looked 4x slower after the change (0.87 vs 3.57 req/s goodput on the same config and
+  seed). Wrong conclusion available: "the metrics layer is expensive". I ran the previous commit and
+  the new one back to back instead: 0.83 vs 0.90. The machine itself had become about 2x slower than
+  during the published session (224.8 tok/s stored vs about 107 tok/s now, both versions). Lesson,
+  again: only compare inside one session. Published numbers were left untouched.
+- I believed the pod needed ~1.5 GiB for the model and runtime; measured RSS was 1.95 GiB with a 1 GiB
+  pool, so about 0.9 GiB. The doc now states the measurement.
+- Two shell traps on Windows, not in the project: Git Bash rewrites `/tmp` in `docker run` arguments
+  (fixed with `MSYS_NO_PATHCONV=1`), and multiple heredocs in one command are rejected.
+
+**Verified here (Docker Desktop):** the image builds (2.75 GB) and runs with `--read-only`,
+`--cap-drop ALL`, non-root, offline, ready in about 6 s, returning the golden tokens;
+`promtool check rules` accepts all 12 rules; the compose stack scrapes the server, loads every rule,
+provisions the dashboard, and all 19 panel queries return data under real load; no alert fired in a
+healthy run. **Not verified:** the manifests on a live cluster, any alert actually firing, the GitHub
+Actions workflow (no remote). All listed in `docs/07-operations.md`.
+
 ---
 
 ## Milestone summary table

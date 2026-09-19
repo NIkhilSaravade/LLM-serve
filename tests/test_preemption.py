@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 from conftest import BATCHES, FIXTURES, make_engine
 
 from engine.config import EngineConfig

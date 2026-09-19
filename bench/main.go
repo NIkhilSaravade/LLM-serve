@@ -212,7 +212,7 @@ func main() {
 		doRequest(context.Background(), client, *url, time.Now(),
 			Planned{Prompt: randomPrompt(wrng, 64), MaxNew: 16})
 	}
-	client.Post(*url+"/metrics/reset", "application/json", nil)
+	client.Post(*url+"/stats/reset", "application/json", nil)
 	health := getJSON(client, *url+"/health")
 
 	planned := plan(w, *seed, *rate, *duration)
@@ -236,7 +236,7 @@ func main() {
 	}
 	wg.Wait()
 	elapsed := time.Since(start).Seconds()
-	serverMetrics := getJSON(client, *url+"/metrics")
+	serverMetrics := getJSON(client, *url+"/stats")
 
 	rep := summarize(results, *duration, elapsed, *sloTTFT, *sloTPOT)
 	rep.Label, rep.Workload, rep.Rate, rep.Seed = *label, *wl, *rate, *seed

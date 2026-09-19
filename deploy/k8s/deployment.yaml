@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-serve
+  labels: {app: llm-serve}
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5            # `kubectl rollout undo` depth
+  selector:
+    matchLabels: {app: llm-serve}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0              # never drop below current capacity during a rollout
+      maxSurge: 1
+  template:
+    metadata:
+      labels: {app: llm-serve}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      terminationGracePeriodSeconds: 90   # long generations must be able to finish
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      # Spread replicas across nodes so one node failure does not take out all capacity.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: llm-serve}
+      containers:
+        - name: llm-serve
+          image: llm-serve            # rewritten by kustomize `images:`
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8000}
+          envFrom:
+            - configMapRef: {name: llm-serve-config}
+          resources:
+            requests: {cpu: "4", memory: 3Gi}
+            limits: {cpu: "4", memory: 4Gi}    # CPU limit == threads; memory bounded, never burst
+          # Model load + KV pool zeroing takes ~10-30 s; give it 5 minutes before giving up.
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          # Ready only once the model is loaded AND warmed up.
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 2
+          # Restart if the scheduler thread died (process up, serving nothing).
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # Let the endpoint controller remove this pod from the Service before SIGTERM, so
+              # no new request lands on a pod that is about to drain.
+              exec: {command: ["python", "-c", "import time; time.sleep(10)"]}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

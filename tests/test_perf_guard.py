@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 
+@pytest.mark.perf
 def test_static_throughput_has_not_regressed():
     rec = ROOT / "results" / "perf_guard.json"
     if not rec.exists():

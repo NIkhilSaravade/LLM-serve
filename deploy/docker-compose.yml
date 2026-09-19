@@ -1,0 +1,46 @@
+# Local stack: the server, Prometheus and a pre-provisioned Grafana dashboard.
+#   docker compose -f deploy/docker-compose.yml up --build
+#   open http://localhost:3000  (anonymous viewer; dashboard "llm-serve")
+# Generate traffic so the panels move:
+#   docker compose -f deploy/docker-compose.yml --profile load up loadgen
+services:
+  engine:
+    build:
+      context: ..
+      args:
+        GIT_SHA: ${GIT_SHA:-local}
+    ports: ["8000:8000"]
+    environment:
+      LLM_SERVE_THREADS: "4"
+    deploy:
+      resources:
+        limits: {cpus: "4", memory: 4g}
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["9090:9090"]
+    depends_on: [engine]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+
+  loadgen:
+    profiles: ["load"]
+    image: golang:1.22
+    working_dir: /src
+    volumes: ["../bench:/src:ro"]
+    command: >
+      go run . -url http://engine:8000 -workload B -rate 3 -duration 300 -drain 30 -warmup 1
+    depends_on: [engine]

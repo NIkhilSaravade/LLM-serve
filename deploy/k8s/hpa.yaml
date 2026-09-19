@@ -1,0 +1,24 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: llm-serve
+  labels: {app: llm-serve}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: llm-serve}
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    # CPU is a workable proxy for a CPU-bound decode loop, but it is a lagging one: by the time
+    # CPU is high the queue is already growing. The better signal is llm_queue_depth, which
+    # needs prometheus-adapter or KEDA (see docs/07-operations.md, "Autoscaling").
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 65}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies: [{type: Pods, value: 2, periodSeconds: 60}]
+    scaleDown:
+      stabilizationWindowSeconds: 600   # replicas take ~30 s to become ready; do not flap
+      policies: [{type: Pods, value: 1, periodSeconds: 120}]

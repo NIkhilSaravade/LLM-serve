@@ -1,8 +1,6 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
-transformers
-fastapi
-uvicorn
+-r requirements-serve.txt
 pytest
 matplotlib
 httpx
+pyyaml
+ruff
