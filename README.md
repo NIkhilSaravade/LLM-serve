@@ -56,7 +56,7 @@ firing, and the GitHub workflow (no remote yet). The operations doc lists these 
 ## Commands
 
 ```
-make setup && make test      # 128 tests: golden, API, metrics, deploy config, site content
+make setup && make test      # 141 tests: golden, API, metrics, deploy config, site content
 make perf                    # wall-clock throughput guard (noisy; run on a quiet machine)
 make serve                   # engine on :8000
 make bench                   # about 2 hours, writes results/bench/
@@ -68,6 +68,16 @@ make docker                  # build the image
 make up / make down          # server + Prometheus + Grafana
 make deploy-check            # generated files current, manifests render
 ```
+
+Release gates, on a local `kind` cluster (needs Docker, kubectl and kind):
+
+```
+scripts/rollout_drill.sh IMAGE SHA     # deploy, smoke test, bad release contained, rollback
+scripts/canary_drill.sh  IMAGE SHA     # SLO canary: good release promoted, breaching release aborted
+python scripts/perf_gate.py --baseline IMG_A --candidate IMG_B    # relative goodput/throughput gate
+```
+
+Regenerate `site-src/src/data.json` (`python scripts/build_site.py`) in the same commit as any change to tests, scripts or the page's verification content: it embeds the test count and line counts, and CI checks it is current.
 
 On Windows without GNU make, use `.\make.ps1 <target>`.
 

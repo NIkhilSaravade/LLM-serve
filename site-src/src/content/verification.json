@@ -30,9 +30,17 @@
   {
     "area": "Kubernetes",
     "claim": "The manifests work on a live cluster",
+    "status": "verified",
+    "how": "Applied to a real Kubernetes cluster (kind), locally and in GitHub Actions: probes, zero-unavailable rollouts, a build that cannot start being contained, rollback, and an SLO canary.",
+    "source": "The manifests run on a real Kubernetes cluster"
+  },
+  {
+    "area": "Kubernetes",
+    "claim": "Autoscaling and node drains behave as designed",
     "status": "not-verified",
-    "how": "They render with kubectl kustomize and unit tests check their consistency, but probes, autoscaling and the drain sequence have not met a real API server.",
-    "source": "The Kubernetes manifests have not been applied to a real cluster."
+    "how": "The HPA is removed in the kind overlays (no metrics-server) and the PodDisruptionBudget has not been exercised by a node drain. Both are only rendered and reviewed.",
+    "source": "the PodDisruptionBudget has not been exercised by a node drain",
+    "doc": "docs/07-operations.md"
   },
   {
     "area": "Alerts",
@@ -44,9 +52,9 @@
   {
     "area": "CI",
     "claim": "The GitHub Actions workflow passes",
-    "status": "not-verified",
-    "how": "Each step was run by hand locally. The workflow itself has not run because the repository had no remote.",
-    "source": "The GitHub Actions workflow has never run"
+    "status": "verified",
+    "how": "The ci, release and perf-calibrate workflows run green on GitHub. The production deploy workflow has not run.",
+    "source": "The GitHub Actions workflows run"
   },
   {
     "area": "Hosting",

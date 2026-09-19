@@ -13,7 +13,8 @@ exists. Everything else is scaffolding.
 The final deliverable is a benchmark result: continuous batching plus paged KV
 cache versus naive serving, measured honestly, with an ablation table.
 
-Read `docs/00-project-brief.md` for the full context before starting real work.
+Read `docs/00-project-brief.md` for the full context before starting real work. `docs/` is kept offline (git-ignored) by
+the owner's choice: keep it updated locally, never commit it, and never make CI or the build depend on it.
 
 ## Non-negotiable rules
 
@@ -66,7 +67,7 @@ Read `docs/00-project-brief.md` for the full context before starting real work.
 llm-serve/
 ├── CLAUDE.md
 ├── README.md              # results summary + how to run
-├── docs/                  # read these; they are the spec (00-05), the log (06) and the runbook (07)
+├── docs/                  # OFFLINE (git-ignored, not in the public repo): spec 00-05, log 06, runbook 07, site 08, release pipeline 09
 ├── engine/                # Python: the actual server
 │   ├── api.py             # FastAPI layer: /generate (streaming), /health /ready /metrics /version /stats
 │   ├── request.py         # Request object + state machine
@@ -90,7 +91,7 @@ llm-serve/
 │   ├── test_ops.py        # health/metrics API, dashboards and alerts vs live /metrics
 │   ├── test_site_content.py # every claim on the results page quotes a repo document that still says it
 │   └── test_perf_guard.py # wall-clock throughput guard (marker: perf)
-├── results/               # milestone JSON + results/bench/ (one file per load-generator run)
+├── results/               # milestone JSON, results/bench/ (one file per load-generator run), results/perf_gate/ (gate calibration)
 ├── scripts/
 │   ├── make_fixtures.py   # regenerate golden fixtures from HF reference (only place generate() is allowed)
 │   ├── run_bench.sh       # one command, reproduces every published number
@@ -99,15 +100,25 @@ llm-serve/
 │   ├── plot.py            # optional static PNG charts into results/plots
 │   ├── build_site.py      # results/bench + results/m*.json -> site-src/src/data.json (every number on the page)
 │   ├── build_dashboard.py # Grafana dashboard JSON
-│   └── render_prometheus_rule.py  # Kubernetes PrometheusRule from deploy/prometheus/alerts.yml
+│   ├── render_prometheus_rule.py  # Kubernetes PrometheusRule from deploy/prometheus/alerts.yml
+│   ├── rollout_drill.sh   # release drill on kind: deploy, smoke test, bad release contained, rollback
+│   ├── canary_drill.sh    # Argo Rollouts canary on kind: good release promoted, SLO-breaching release aborted
+│   ├── perf_gate.py       # A/B performance gate: candidate image vs last stable, same machine
+│   ├── smoke_deploy.py    # post-deploy check (stdlib only)
+│   └── provision_vm.sh    # one-time production VM setup (k3s). NOT RUN: no VM exists
 ├── deploy/                # docker-compose, Prometheus, Grafana, Kubernetes manifests
+│   ├── k8s/               # base manifests (production shape)
+│   ├── overlays/ci/       # same manifests scaled to a CI runner (kind)
+│   ├── overlays/canary/   # + Argo Rollouts canary, SLO analysis, Prometheus, in-cluster load
+│   └── production/        # + Cloudflare Tunnel, restricted deployer RBAC. NOT DEPLOYED
 ├── site-src/              # results page: React + TypeScript (strict) + Tailwind + Motion, built by Vite
 │   ├── src/               # components, content/*.json, styles.css, data.json (generated, committed)
 │   ├── public/            # _headers (CSP, caching), 404, robots, favicon, og.png
 │   ├── tests/site.spec.ts # Playwright + axe: desktop + mobile, real headers, no CSP errors, WCAG AA
 │   └── wrangler.jsonc     # Cloudflare Workers static-assets config
 ├── Dockerfile
-├── .github/workflows/     # ci.yml (gates everything) and deploy-site.yml (Cloudflare, after CI passes)
+├── .github/workflows/     # ci.yml (gates everything); release.yml (publish, drill, canary, perf gate, promote to `stable`);
+│                          # perf-calibrate.yml (manual); deploy-production.yml (manual, never run); deploy-site.yml (manual alternative)
 └── site/                  # build output (git-ignored): hashed assets served by Cloudflare
 ```
 
@@ -115,7 +126,7 @@ llm-serve/
 
 ```bash
 make setup          # venv + deps
-make test           # 128 tests, golden ones included. must be green. (excludes the noisy perf guard)
+make test           # 141 tests, golden ones included. must be green. (excludes the noisy perf guard)
 make perf           # wall-clock throughput guard; run on a quiet machine
 make serve          # start the engine on :8000
 make bench          # about 2 hours: every configuration, every sweep, into results/bench/
