@@ -114,7 +114,7 @@ jobs:
         run: docker build --build-arg GIT_SHA=${{ github.sha }} -t llm-serve:ci .
       - name: Run and smoke-test
         run: |
-          docker run -d --name s -p 8000:8000 llm-serve:ci
+          docker run -d --name llm-serve-ci -p 8000:8000 llm-serve:ci
           for i in $(seq 1 90); do
             curl -sf localhost:8000/ready >/dev/null && break
             sleep 2
@@ -126,6 +126,6 @@ jobs:
           curl -sf localhost:8000/metrics | grep -q '^llm_requests_total{status="ok"} 1.0'
       - name: Logs on failure
         if: failure()
-        run: docker logs s
+        run: docker logs llm-serve-ci
       - name: Runs as non-root
         run: test "$(docker run --rm --entrypoint id llm-serve:ci -u)" != 0
