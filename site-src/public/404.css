@@ -1,0 +1,6 @@
+:root { color-scheme: dark light; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #070a10; color: #eaf0ff; font: 1.05rem/1.6 system-ui, sans-serif; }
+main { padding: 2rem; }
+h1 { font-size: 4rem; margin: 0 0 .5rem; letter-spacing: -0.04em; }
+a { color: #c5ff4a; }
+@media (prefers-color-scheme: light) { body { background: #f5f3ec; color: #0b1020; } a { color: #3d6400; } }

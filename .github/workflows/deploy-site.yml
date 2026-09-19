@@ -1,0 +1,62 @@
+name: deploy-site
+
+# Deploys the results page to Cloudflare Workers (static assets) only after the whole CI workflow has
+# passed on main. One-time setup is in docs/08-deploying-the-site.md.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false   # never interrupt a deploy midway
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: build and deploy
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.deployment-url }}
+    env:
+      # Repository variables (Settings > Secrets and variables > Actions > Variables), not secrets.
+      VITE_SITE_URL: ${{ vars.SITE_URL }}
+      VITE_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site-src/package-lock.json
+      - run: npm --prefix site-src ci
+      - name: Typecheck and build
+        run: npm --prefix site-src run build
+      - name: Deploy
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: site-src
+          command: deploy
+      - name: Smoke-test the live site
+        if: ${{ steps.deploy.outputs.deployment-url != '' }}
+        run: |
+          set -euo pipefail
+          url="${{ steps.deploy.outputs.deployment-url }}"
+          headers="$(curl -sSI "$url")"
+          echo "$headers"
+          echo "$headers" | grep -qi '^content-security-policy:.*script-src .self.'
+          echo "$headers" | grep -qi '^x-content-type-options: nosniff'
+          curl -sSf "$url" | grep -q 'llm-serve'

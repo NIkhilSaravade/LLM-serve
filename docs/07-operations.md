@@ -64,7 +64,7 @@ are not stale.
 ## Capacity planning
 
 Measured on one i7-14700K with 4 torch threads per replica, workload B (scaled-down, see
-`site/index.html`), continuous batching + paged KV:
+the results page), continuous batching + paged KV:
 
 - **Goodput peaks at about 3.7 requests/s per replica** (offered 4 req/s); throughput 175-285
   tokens/s depending on batch size (the max-batch sweep flattens above 8 rows: the CPU is

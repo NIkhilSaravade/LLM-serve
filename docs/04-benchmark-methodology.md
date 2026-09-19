@@ -162,7 +162,7 @@ takes about twenty minutes to set up.
 
 # As run (2026-09-19)
 
-What the published numbers (`results/bench/`, `site/index.html`) actually were, including every
+What the published numbers (`results/bench/` and the results page built from `site-src/`) actually were, including every
 place this differs from the spec above. Nothing here was tuned after seeing a result.
 
 ## Definitions as implemented (`bench/report.go`)

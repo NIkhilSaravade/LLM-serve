@@ -155,7 +155,7 @@ batch cases built from them: `two_different_lengths`, `same_prompt_twice`, `mixe
 output ran its full length (no early EOS). This covers every row of the table above; the block
 boundary cases were created in M0 so they were ready for M4.
 
-## What runs, and what each part is for (102 tests, `make test`)
+## What runs, and what each part is for (128 tests, `make test`)
 
 | File | Covers |
 |---|---|
@@ -163,6 +163,7 @@ boundary cases were created in M0 so they were ready for M4.
 | `test_paged.py` | every fixture at block sizes 4 and 16; batches static and continuous; join and leave with the free list shuffled so a sequence's blocks are not adjacent; allocator unit tests for the block-boundary off-by-one; a bit-exact comparison of K and V, all 12 layers and 70 positions, against a contiguous prefill (debug step 5 of the checklist, automated); blocks follow tokens, not the maximum |
 | `test_preemption.py` | eviction is forced (asserted, otherwise the test would be vacuous) and outputs stay exact; the client receives each token exactly once across an eviction; every request finishes under 2x over-commit with no livelock and nobody evicted endlessly; queue cap returns 429; request that can never fit returns 413; cancelled requests free their memory and are not counted as served |
 | `test_ops.py` | `/health`, `/ready`, `/version`, request-id echo, Prometheus counters and histograms after a request, warmup not counted; every metric a dashboard panel or alert queries exists in the live `/metrics`; generated dashboard and PrometheusRule are current; the ConfigMap is a valid `EngineConfig` consistent with the pod limits |
+| `test_site_content.py` | The hand-written claims on the results page (its problems log, the bug-injection table above, its verification matrix) each quote a document, and the test fails if the quote is gone; the system diagram names only files that exist |
 | `test_perf_guard.py` | fails if static-batching throughput drops more than 20% below the recorded value (marker `perf`, excluded from `make test` and CI because timing on a shared or drifting machine is too noisy; run it with `make perf` on a quiet machine) |
 
 All comparisons are exact token-id list equality. No test has a tolerance.
@@ -189,7 +190,7 @@ repo. Four bugs is a spot check, not coverage.
 
 - Correctness is checked against one model on one CPU in fp32. Rows of different batch sizes use
   different matrix-multiply shapes, so tiny float differences are possible; none flipped an argmax in
-  102 tests, but that is empirical, not guaranteed. A near-tie would show up as a failing golden test
+  the 102 model, engine and operations tests, but that is empirical, not guaranteed. A near-tie would show up as a failing golden test
   and must be investigated, never absorbed by a tolerance.
 - The dynamics under real traffic (thousands of requests, long prompts) are covered by the benchmark
   for performance, not by golden tests for output equality.

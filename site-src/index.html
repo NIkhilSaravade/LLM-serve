@@ -4,16 +4,38 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <meta name="description" content="A from-scratch GPT-2 inference server on CPU, built to measure what continuous batching and a paged KV cache are worth. Every number is measured, including the ones that do not flatter it." />
-    <title>llm-serve: what continuous batching and paged KV cache are worth</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b0b0c'/%3E%3Cpath d='M7 22 L13 14 L18 18 L25 8' fill='none' stroke='%23e5a823' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-    <script>
-      try { var t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t } catch (e) {}
-    </script>
+    <meta name="theme-color" content="#070a10" />
+    <title>llm-serve: serving LLMs is a scheduling problem</title>
+    <meta name="description" content="A from-scratch LLM inference server, measured honestly on a CPU: what continuous batching and a paged KV cache really buy, how it is built, proven and operated, and the eleven problems that broke along the way." />
+    <meta name="robots" content="index, follow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="llm-serve: serving LLMs is a scheduling problem" />
+    <meta property="og:description" content="A from-scratch LLM inference server, measured honestly: continuous batching, a paged KV cache, the system design, the proof, and what broke." />
+    <meta property="og:image" content="%VITE_SITE_URL%/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="llm-serve: serving LLMs is a scheduling problem" />
+    <meta name="twitter:image" content="%VITE_SITE_URL%/og.png" />
+
+    <!-- external, not inline, so the Content-Security-Policy can forbid inline script entirely -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <noscript>
+      <main>
+        <h1>llm-serve</h1>
+        <p>
+          A from-scratch LLM inference server, measured honestly on a CPU: what continuous batching and a paged KV cache really buy,
+          how the scheduler and memory manager are built, how correctness is proven, how it is operated, and what broke along the way.
+        </p>
+        <p>This report is interactive (charts, diagrams and animations), so it needs JavaScript. Every number in it is generated from the raw benchmark data committed in the repository.</p>
+      </main>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

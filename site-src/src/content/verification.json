@@ -1,0 +1,59 @@
+[
+  {
+    "area": "Container",
+    "claim": "The image builds and runs under the same restrictions as the Kubernetes pod",
+    "status": "verified",
+    "how": "Docker Desktop: read-only filesystem, all capabilities dropped, non-root, offline. Ready in about 6 seconds and returns exactly the golden token ids.",
+    "source": "The image builds and serves."
+  },
+  {
+    "area": "Observability",
+    "claim": "Prometheus scrapes the server, loads every rule, and Grafana provisions the dashboard",
+    "status": "verified",
+    "how": "Compose stack under a real 2 requests per second run: every dashboard query returned data.",
+    "source": "The compose stack works end to end."
+  },
+  {
+    "area": "Alerts",
+    "claim": "The alert rules are syntactically valid",
+    "status": "verified",
+    "how": "promtool check rules accepts all of them, and a healthy run fired none.",
+    "source": "accepts the alert rules"
+  },
+  {
+    "area": "Overhead",
+    "claim": "The observability layer costs nothing measurable",
+    "status": "verified",
+    "how": "Same-session A/B on the same configuration and seed: 0.83 req/s before, 0.90 after.",
+    "source": "Observability overhead is not measurable."
+  },
+  {
+    "area": "Kubernetes",
+    "claim": "The manifests work on a live cluster",
+    "status": "not-verified",
+    "how": "They render with kubectl kustomize and unit tests check their consistency, but probes, autoscaling and the drain sequence have not met a real API server.",
+    "source": "The Kubernetes manifests have not been applied to a real cluster."
+  },
+  {
+    "area": "Alerts",
+    "claim": "An alert actually fires when it should",
+    "status": "not-verified",
+    "how": "Expressions parse and evaluate, but thresholds are reasoned from the benchmark, not exercised by bad traffic. The burn-rate alert needs an hour of it.",
+    "source": "No alert has been seen firing."
+  },
+  {
+    "area": "CI",
+    "claim": "The GitHub Actions workflow passes",
+    "status": "not-verified",
+    "how": "Each step was run by hand locally. The workflow itself has not run because the repository had no remote.",
+    "source": "The GitHub Actions workflow has never run"
+  },
+  {
+    "area": "Hosting",
+    "claim": "This page is live on Cloudflare",
+    "status": "not-verified",
+    "how": "The Wrangler configuration validates with a dry run and the production headers are tested locally, but the site has not been deployed.",
+    "source": "has not been deployed to Cloudflare yet",
+    "doc": "docs/08-deploying-the-site.md"
+  }
+]

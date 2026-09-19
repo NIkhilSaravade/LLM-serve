@@ -61,9 +61,9 @@ jobs:
       - run: go build -o /tmp/llm-bench .
 
   site:
-    name: results page builds and renders
+    name: results page (typecheck, build, browser tests)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -82,11 +82,17 @@ jobs:
           cache: npm
           cache-dependency-path: site-src/package-lock.json
       - run: npm --prefix site-src ci
-      - run: npm --prefix site-src run build
-      # Opens the built single file from disk in desktop and mobile Chromium: no console errors,
-      # no external requests, no element wider than the viewport, headline numbers present.
+      - name: Typecheck and production build
+        run: npm --prefix site-src run build
+      # Serves the build with the real public/_headers and drives it in desktop and mobile Chromium:
+      # no console or CSP errors, no inline script, no external requests, cache headers, no overflow,
+      # WCAG AA in both themes (axe), and the interactions.
       - run: npx --prefix site-src playwright install --with-deps chromium
       - run: npm --prefix site-src run test:visual
+      - name: Wrangler config is valid
+        run: npm --prefix site-src run deploy:dry
+        env:
+          WRANGLER_SEND_METRICS: "false"
 
   kubernetes:
     name: manifests render

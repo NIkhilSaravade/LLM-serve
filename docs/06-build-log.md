@@ -540,6 +540,60 @@ Chromium: no console errors, no external requests, no element wider than the vie
 present, both illustrations labelled), a CI job for both, and docs updated. `scripts/plot.py` remains as an
 optional PNG export into `results/plots`.
 
+### 2026-09-19 — results page v2: TypeScript, a new identity, the full system story, Cloudflare-ready
+
+**Goal:** the first page was a competent report but visually basic, and a recruiter landing on it did not
+learn how the system is built, how it is proven, how it is operated, or what went wrong. Rebuild it in
+TypeScript with a distinctive identity, a left sidebar instead of a top bar, and the whole story on one
+page, production-ready for Cloudflare. Outside the original plan; requested by the user. No measurement
+changed.
+
+**What changed:**
+- **TypeScript, strict** (`noUncheckedIndexedAccess`, `verbatimModuleSyntax`): the generated data has a
+  typed shape (`types.ts`), every component is `.tsx`, and `tsc --noEmit` gates the build.
+- **New identity.** Bricolage Grotesque (display), Instrument Sans (text) and JetBrains Mono (numbers), all
+  self-hosted; ink-blue surfaces with a single acid-lime signal colour, replacing the serif and amber. The
+  chart palette was run through the dataviz validator and needed tuning: my first colours were too light for
+  marks on a dark surface, so the series colours were darkened until every check passed (lightness band,
+  colour-blind separation, contrast) on both dark and light surfaces. Small text got its own darker steps.
+- **Left sidebar** with grouped navigation, scroll-spy with a sliding indicator, a reading-progress bar, a
+  theme toggle, and a slide-over drawer on mobile.
+- **New sections:** a thirty-second brief; build order M0 to operations; an interactive **system map** (nine
+  components, click for decisions, limitation and evidence, or trace one request through it); the request
+  **state machine** and the five-step scheduler iteration; an interactive **KV paging diagram** with the
+  block-boundary off-by-one; correctness (the golden-test pipeline and the bug-injection results); operations
+  (SLOs and a verified / not-verified matrix); and an engineering log of **eleven problems** with the wrong
+  assumption behind each.
+- **Nothing on the page is unsourced.** Numbers come from `data.json`. The hand-written entries
+  (`src/content/*.json`) each quote the repo document they summarise, and `tests/test_site_content.py` fails if
+  a quote is missing or if the system diagram names a file that does not exist.
+- **Production for Cloudflare:** hashed immutable assets, a Content-Security-Policy with no inline script or
+  style and no third-party origin, HSTS and friends, a 404 page, `robots.txt`, social preview image generated
+  from the data, `wrangler.jsonc`, and a `deploy-site` workflow that runs only after CI passes and then
+  smoke-tests the live headers. `docs/08-deploying-the-site.md` is the runbook. `site/` is no longer committed.
+
+**What the tests caught (each would have shipped):** the browser tests serve the build with the real
+`_headers` and run axe in both themes. In order of discovery:
+1. *Four accessibility violations:* `aria-expanded` on a table row, `aria-label` on a bare SVG rect, an `<ol>`
+   whose children were `<div>` wrappers, and light-theme text below 4.5:1. The last one was instructive: the
+   tag colours passed the 3:1 that chart marks need but small text needs 4.5:1.
+2. *The HTML document had no cache header.* The rule matched `/index.html` but the page is served at `/`.
+   Cloudflare would have cached the HTML and hidden a deploy. Wrong mental model: "one path, one file".
+3. *My own preview server ignored the wildcard rules.* The glob-to-regex conversion never handled `*`, so
+   `/assets/*` matched nothing and the test would have passed without checking the cache headers. Found only
+   because I made the test assert the header. A test double needs its own test.
+4. *The page scrolled sideways on desktop* (a decorative grid used negative insets) *and the mobile drawer's
+   navigation overlapped its own footer buttons.* Both invisible to the eye at a glance, both caught by the
+   overflow and click-interception checks.
+5. *A CSS class collision:* `.pt` styled both the SVG pool labels and the problem titles, so titles rendered in
+   monospace. Found by looking at the screenshot, not by any test.
+Two visual review rounds also fixed clipped chart labels, node subtitles overflowing their boxes, and a packet
+marker sitting on top of a label.
+
+**Not done or not verified:** the site has not been deployed to Cloudflare, so the live headers and the deploy
+workflow are untested; only Chromium was used; the requested `design/taste` skill still does not exist and was
+not installed. Prerendering was not done, so crawlers that do not run JavaScript see only the noscript summary.
+
 ---
 
 ## Milestone summary table

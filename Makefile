@@ -8,7 +8,7 @@ else
   VPY := $(VENV)/bin/python
 endif
 
-.PHONY: setup test perf serve bench results site site-setup site-test plots lint docker up down deploy-check
+.PHONY: setup test perf serve bench results site site-setup site-test site-preview plots lint docker up down deploy-check
 
 setup:
 	$(BOOTSTRAP_PY) -m venv $(VENV)
@@ -40,6 +40,9 @@ site:
 
 site-test: site
 	npm --prefix site-src run test:visual
+
+site-preview:
+	npm --prefix site-src run preview
 
 plots:
 	$(VPY) scripts/plot.py

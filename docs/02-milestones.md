@@ -327,7 +327,7 @@ M7 every time.
 | M3 continuous batching | `results/m3_continuous.json` | 231 vs 170 tok/s saturated (+36%), slot util 0.94 vs 0.43 | slot util is only meaningful under saturation, so it was measured with a saturating burst; padding waste rose to 0.39 |
 | M4 paged KV cache | `results/m4_paged.json` | 2.9x throughput at 128 MiB, KV efficiency 0.95 vs 0.12 | M4 has no preemption, so admission commits worst-case blocks (prompt + max_new_tokens) while still allocating lazily; paging was 8-17% slower when memory was plentiful |
 | M5 preemption | `results/m5_overload.json` | every request finished at 3x capacity | preemption almost never fired at this scale and was not better than M4's admission; kept because it makes optimistic admission safe |
-| M6 benchmarks + page | `results/bench/`, `site/index.html` | continuous batching 3.5x the goodput of static | workloads scaled ~3x down; 60-90 requests per run rather than a few hundred; see `docs/04` |
+| M6 benchmarks + page | `results/bench/`, the results page (`site-src/`) | continuous batching 3.5x the goodput of static | workloads scaled ~3x down; 60-90 requests per run rather than a few hundred; see `docs/04` |
 
 Not in the plan, added on request: the operations layer (containers, Prometheus, Grafana, Kubernetes
 manifests, CI), described in `docs/07-operations.md`. It changes no engine behaviour and no number.

@@ -1,0 +1,14 @@
+{
+  // Cloudflare Workers with static assets: serves ../site (the Vite build) from the edge, applies
+  // ../site/_headers, and answers unknown paths with 404.html. No Worker code: assets only.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "llm-serve-site",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "../site",
+    "not_found_handling": "404-page"
+  },
+  "observability": { "enabled": true }
+  // Custom domain (after the first deploy): add
+  //   "routes": [{ "pattern": "your.domain.example", "custom_domain": true }]
+}

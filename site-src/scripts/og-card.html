@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Bricolage"; font-weight: 200 800; src: url("../node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Instrument"; font-weight: 400 700; src: url("../node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Mono"; font-weight: 100 800; src: url("../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); }
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1200px; height: 630px; background: #070a10; color: #eaf0ff; font-family: "Instrument", sans-serif; position: relative; overflow: hidden; }
+  .grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(140,170,255,.10) 1px, transparent 1px), linear-gradient(90deg, rgba(140,170,255,.10) 1px, transparent 1px); background-size: 56px 56px; -webkit-mask-image: radial-gradient(ellipse 70% 80% at 25% 30%, #000, transparent 75%); }
+  .wrap { position: absolute; inset: 64px 72px; display: flex; flex-direction: column; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 14px; font: 700 28px "Bricolage", sans-serif; letter-spacing: -0.02em; }
+  .mark { width: 40px; height: 40px; border-radius: 9px; background: #c5ff4a; display: grid; place-items: center; }
+  h1 { font: 700 104px/0.98 "Bricolage", sans-serif; letter-spacing: -0.035em; max-width: 980px; }
+  h1 span { background: linear-gradient(#c5ff4a, #c5ff4a) 0 94% / 100% 9px no-repeat; }
+  .facts { display: flex; gap: 48px; font: 500 22px "Mono", monospace; color: #aab5cd; }
+  .facts b { color: #c5ff4a; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="wrap">
+    <div class="brand"><div class="mark"><svg width="26" height="26" viewBox="0 0 32 32"><path d="M7 22 L13 14 L18 18 L25 8" fill="none" stroke="#0b1400" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>llm-serve</div>
+    <h1>Serving LLMs is a <span>scheduling</span> problem.</h1>
+    <div class="facts"><div id="f1"></div><div id="f2"></div><div id="f3"></div></div>
+  </div>
+</body>
+</html>

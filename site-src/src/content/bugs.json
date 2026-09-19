@@ -1,0 +1,30 @@
+[
+  {
+    "bug": "Decode position off by one",
+    "detail": "The token fed to a decode step is placed one position too far.",
+    "caught_by": "single-sequence golden tests",
+    "first_run": "caught",
+    "source": "decode position off by one"
+  },
+  {
+    "bug": "A mask that lets a query see one position too many",
+    "detail": "Rows in a batch attend to a key they should not.",
+    "caught_by": "batch-independence tests",
+    "first_run": "caught",
+    "source": "mask lets a query see one position too many"
+  },
+  {
+    "bug": "One block too few at an exact block boundary",
+    "detail": "A prompt of exactly one block is given one block, so its next token has nowhere to go.",
+    "caught_by": "paged allocator tests",
+    "first_run": "caught",
+    "source": "block allocation one block short at a boundary"
+  },
+  {
+    "bug": "Preemption drops the tokens already generated",
+    "detail": "After a recompute the final output is still identical, because greedy decoding regenerates the same tokens, but the client would receive the early ones twice.",
+    "caught_by": "nothing at first; then a test on the stream the client sees",
+    "first_run": "missed",
+    "source": "missed at first"
+  }
+]

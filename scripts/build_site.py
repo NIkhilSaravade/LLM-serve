@@ -6,7 +6,7 @@ The limitations list is extracted from the `# LIMITATION:` comments in engine/*.
 drift from the code.
 
     python scripts/build_site.py     # writes the data
-    npm --prefix site-src run build  # builds the single-file page into site/index.html
+    npm --prefix site-src run build  # typechecks and builds the page into site/ (git-ignored)
 """
 from __future__ import annotations
 
@@ -74,6 +74,46 @@ def stall(runs: list[dict]) -> dict:
                 bins[b] = max(bins.get(b, 0.0), g)
         out["series"][label] = [[round(b * 0.25, 2), round(g, 4)] for b, g in sorted(bins.items())]
     return out
+
+
+def _loc(patterns: list[str]) -> int:
+    n = 0
+    for pat in patterns:
+        for p in ROOT.glob(pat):
+            if p.is_file() and "node_modules" not in p.parts and "__pycache__" not in p.parts:
+                n += sum(1 for ln in p.read_text(encoding="utf-8", errors="ignore").splitlines() if ln.strip())
+    return n
+
+
+def facts() -> dict:
+    """Counted from the repository, never typed: what a reader can check for themselves."""
+    import subprocess
+
+    import yaml
+
+    tests = None
+    try:  # the collected test count, excluding the wall-clock guard (same as `make test`)
+        out = subprocess.run([sys.executable, "-m", "pytest", "--co", "-q", "-m", "not perf"], cwd=ROOT,
+                             capture_output=True, text=True, timeout=180).stdout
+        m = re.search(r"(\d+)/?\d* tests? collected", out) or re.search(r"^(\d+) tests? collected", out, re.M)
+        tests = int(m.group(1)) if m else None
+    except Exception:
+        pass
+    alerts = yaml.safe_load((ROOT / "deploy" / "prometheus" / "alerts.yml").read_text(encoding="utf-8"))["groups"]
+    rules = [r for g in alerts for r in g["rules"]]
+    dash = json.loads((ROOT / "deploy" / "grafana" / "dashboards" / "llm-serve.json").read_text(encoding="utf-8"))
+    return {
+        "tests": tests,
+        "loc": {"engine_python": _loc(["engine/*.py"]), "tests_python": _loc(["tests/*.py"]),
+                "scripts": _loc(["scripts/*.py", "scripts/*.sh"]), "load_generator_go": _loc(["bench/*.go"]),
+                "site_typescript": _loc(["site-src/src/**/*.ts", "site-src/src/**/*.tsx"])},
+        "alert_rules": sum(1 for r in rules if "alert" in r),
+        "recording_rules": sum(1 for r in rules if "record" in r),
+        "dashboard_panels": len(dash["panels"]),
+        "k8s_manifests": len(list((ROOT / "deploy" / "k8s").glob("*.yaml"))) + len(list((ROOT / "deploy" / "k8s" / "monitoring").glob("*.yaml"))),
+        "docs_pages": len(list((ROOT / "docs").glob("*.md"))),
+        "golden_fixtures": len([p for p in (ROOT / "tests" / "fixtures").glob("*.json") if p.stem != "batches"]),
+    }
 
 
 def main() -> None:
@@ -154,6 +194,7 @@ def main() -> None:
                      "max_rate": hi["rate"], "rejected_at_max": hi["rejected"]["median"],
                      "completed_at_max": hi["completed"]["median"]},
         "m4_burst": burst,
+        "facts": facts(),
         "stall": stall(runs),
         "limitations": limitations(),
     }

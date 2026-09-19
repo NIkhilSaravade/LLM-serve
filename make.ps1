@@ -16,6 +16,7 @@ switch ($Target) {
   "site"    { & $vpy scripts/build_site.py; npm --prefix site-src run build }
   "site-test" { & $vpy scripts/build_site.py; npm --prefix site-src run build; npm --prefix site-src run test:visual }
   "results" { & $vpy scripts/build_site.py; npm --prefix site-src run build }
+  "site-preview" { npm --prefix site-src run preview }
   "plots"   { & $vpy scripts/plot.py }
   "lint"    { & $vpy -m ruff check engine scripts tests --select E9,F }
   "docker"  { docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) -t llm-serve . }
@@ -27,5 +28,5 @@ switch ($Target) {
     kubectl kustomize deploy/k8s | Out-Null
     kubectl kustomize deploy/k8s/monitoring | Out-Null
   }
-  default   { Write-Host "targets: setup test perf serve bench results site site-setup site-test plots lint docker up down deploy-check" }
+  default   { Write-Host "targets: setup test perf serve bench results site site-setup site-test site-preview plots lint docker up down deploy-check" }
 }
