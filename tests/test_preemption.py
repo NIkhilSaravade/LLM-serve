@@ -89,3 +89,25 @@ def test_api_returns_429_when_overloaded_and_413_when_request_can_never_fit(engi
     with TestClient(create_app(cfg)) as c:
         r = c.post("/generate", json={"prompt_token_ids": [5] * 10, "max_new_tokens": 400})
         assert r.status_code == 413    # 2 MiB is ~1 block: 410 tokens can never fit
+
+
+def test_cancelled_requests_stop_consuming_capacity_and_free_memory(engine):
+    """A client that disconnects must not keep a slot, KV blocks or decode compute busy."""
+    eng = make_engine(engine, backend="paged", block_size=16, kv_budget_mib=64,
+                      batching="continuous", max_batch=4)
+    keep = Request(uuid.uuid4().hex, [5] * 20, 40, ignore_eos=True)
+    gone = Request(uuid.uuid4().hex, [6] * 20, 400, ignore_eos=True)
+    queued = Request(uuid.uuid4().hex, [7] * 20, 400, ignore_eos=True)
+    for r in (keep, gone, queued):
+        eng.sched.submit(r)
+    for _ in range(5):
+        eng.sched.step()
+    assert len(gone.block_table) > 0
+    gone.cancelled = queued.cancelled = True
+    while eng.sched.has_work():
+        eng.sched.step()
+    assert gone.finish_reason == "cancelled" and len(gone.output_token_ids) < 20
+    assert queued.output_token_ids == [] or queued.finish_reason == "cancelled"
+    assert len(keep.output_token_ids) == 40                      # the survivor is unaffected
+    assert len(eng.manager.free_blocks) == eng.manager.num_blocks  # everything returned
+    assert eng.sched.metrics.summary(1.0)["requests"] == 1        # abandoned work not counted

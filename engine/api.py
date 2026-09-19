@@ -98,19 +98,29 @@ def create_app(cfg: EngineConfig | None = None) -> FastAPI:
 
         if body.stream:
             async def ndjson():
-                async for t, text, fin, n in events_iter():
-                    yield json.dumps({"token_id": t, "text": text}) + "\n"
-                    if fin:
-                        tail = detok.flush()
-                        if tail:
-                            yield json.dumps({"token_id": None, "text": tail}) + "\n"
-                        yield json.dumps({"done": True, "finish_reason": req.finish_reason,
-                                          "n_tokens": n}) + "\n"
+                try:
+                    async for t, text, fin, n in events_iter():
+                        yield json.dumps({"token_id": t, "text": text}) + "\n"
+                        if fin:
+                            tail = detok.flush()
+                            if tail:
+                                yield json.dumps({"token_id": None, "text": tail}) + "\n"
+                            yield json.dumps({"done": True, "finish_reason": req.finish_reason,
+                                              "n_tokens": n}) + "\n"
+                finally:
+                    # Client went away (cancelled task / closed connection): stop spending
+                    # capacity and KV memory on a response nobody will read.
+                    if not req.finished:
+                        req.cancelled = True
             return StreamingResponse(ndjson(), media_type="application/x-ndjson")
 
         text = ""
-        async for _, piece, fin, _ in events_iter():
-            text += piece
+        try:
+            async for _, piece, fin, _ in events_iter():
+                text += piece
+        finally:
+            if not req.finished:
+                req.cancelled = True
         text += detok.flush()
         return {"request_id": req.request_id, "token_ids": req.output_token_ids, "text": text,
                 "finish_reason": req.finish_reason,

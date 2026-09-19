@@ -29,6 +29,7 @@ class Request:
     block_table: list[int] = field(default_factory=list)  # slot (M2/M3) or blocks (M4)
     admit_seq: int = -1          # order of admission, used by the eviction policy (M5)
     preempt_count: int = 0       # starvation guard (M5)
+    cancelled: bool = False      # set from the API thread when the client disconnects
     # Called with (token_id, finished) for every generated token, from the engine thread.
     sink: Callable[[int, bool], None] | None = field(default=None, repr=False)
 

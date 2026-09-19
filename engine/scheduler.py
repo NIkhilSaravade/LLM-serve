@@ -48,12 +48,20 @@ class Scheduler:
         self._decode()   # 3. one decode step for everyone running
 
     def _retire(self) -> None:
+        # A client that disconnected must stop consuming capacity: without this, requests the
+        # load generator abandoned at a cutoff kept running and slowed every later run.
+        self.waiting = [r for r in self.waiting if not r.cancelled]
+        for req in self.running:
+            if req.cancelled and not req.finished:
+                req.finish_reason = "cancelled"
+                req.finish_time = time.perf_counter()
         keep = []
         for req in self.running:
             if req.finished:
                 req.state = RequestState.FINISHED
                 self.manager.free(req)
-                self.metrics.record_request(req)
+                if req.finish_reason != "cancelled":   # abandoned work is not a served request
+                    self.metrics.record_request(req)
             else:
                 keep.append(req)
         self.running = keep
@@ -197,6 +205,7 @@ class NaiveScheduler:
         return bool(self.waiting)
 
     def step(self) -> None:
+        self.waiting = [r for r in self.waiting if not r.cancelled]
         if not self.waiting:
             return
         req = self.waiting.pop(0)

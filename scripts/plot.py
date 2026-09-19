@@ -206,7 +206,7 @@ def main() -> None:
         ax.set_xlabel("Time since start (s)")
         ax.set_ylabel("Gap between consecutive tokens (s)")
         ax.set_title("Long-prefill stall (seed 1)")
-        ax.legend(loc="upper right", markerscale=3)
+        ax.legend(loc="upper left", markerscale=3)
         save(fig, "stall")
     else:
         plt.close(fig)

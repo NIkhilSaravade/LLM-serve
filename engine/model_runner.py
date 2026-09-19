@@ -56,7 +56,7 @@ class ModelRunner:
         """Greedy decode one request to completion, recomputing everything each step."""
         req.state = RequestState.RUNNING
         while len(req.output_token_ids) < req.max_new_tokens:
-            if req.seq_len >= MAX_CONTEXT:
+            if req.seq_len >= MAX_CONTEXT or req.cancelled:
                 break
             logits = self.forward_logits(req.prompt_token_ids + req.output_token_ids)
             next_id = int(torch.argmax(logits[-1]).item())
@@ -70,7 +70,10 @@ class ModelRunner:
                 break
         req.finish_time = time.perf_counter()
         req.state = RequestState.FINISHED
-        self.metrics.record_request(req)
+        if req.cancelled:
+            req.finish_reason = "cancelled"
+        else:
+            self.metrics.record_request(req)
         return req
 
     def generate_greedy(self, prompt_token_ids: list[int], max_new_tokens: int) -> list[int]:

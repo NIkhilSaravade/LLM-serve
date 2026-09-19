@@ -23,6 +23,9 @@ Q='"max_queue":64'           # the same admission-control cap for every variant
 
 (cd bench && go build -o "$(basename "$BENCH")" .) || { echo "go build failed"; exit 1; }
 mkdir -p "$OUT"
+# Two concurrent runs would share port 8000 and silently corrupt each other's numbers.
+LOCK="$OUT/.lock"
+mkdir "$LOCK" 2>/dev/null || { echo "another run_bench.sh is running (remove $LOCK if not)" >&2; exit 1; }
 $PY scripts/machine_info.py > "$OUT/machine.json"
 
 SERVER_PID=""
@@ -47,7 +50,7 @@ stop_server() {
   SERVER_PID=""
   for _ in $(seq 1 30); do curl -sf "$URL/health" >/dev/null 2>&1 || break; sleep 1; done
 }
-trap stop_server EXIT
+trap "stop_server; rmdir \"$LOCK\" 2>/dev/null" EXIT
 
 # bench <experiment> <cfgname> <workload> <rate> <seed> [extra llm-bench flags]
 bench() {
