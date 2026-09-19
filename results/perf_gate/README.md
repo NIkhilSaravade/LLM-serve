@@ -43,12 +43,35 @@ The candidate was given half the CPU (2 instead of 4), which is a large slowdown
 
 Verdict: **fail**. The gate distinguishes a real regression from noise by a wide margin.
 
+## Calibration on the GitHub runner (4 vCPU, container limited to 3 CPUs), 2026-09-19
+
+The runner is about 3 times slower than the development machine, so its operating point is different. Same image on
+both sides (A/A) with the `perf-calibrate` workflow:
+
+| Offered load | Goodput ratio | Throughput ratio | What it showed |
+|---|---|---|---|
+| 4 req/s (the script default; the first release run used it by mistake) | 1.00 | 0.999 | far above the knee: SLO attainment only 0.20, throughput 61 tok/s, so goodput barely moves. Not a useful operating point |
+| 1 req/s | 1.00 | 0.994 | far below the knee: attainment 1.00 and throughput just equals the offered load (43.5 tok/s, +/-1%), so a slower engine would look identical. The gate would be blind here |
+| **2 req/s (chosen)** | **0.976** | **1.001** | attainment 0.95 to 1.00: right at the knee, where a slower engine starts losing goodput |
+
+The rate was picked from A/A runs only, before any candidate was judged. The threshold stays 0.85: at the chosen rate
+identical images differ by at most 2.4%.
+
+Synthetic slowdown on the runner (candidate limited to 2 CPUs instead of 3), 3 pairs:
+
+| | baseline median | candidate median | ratio |
+|---|---|---|---|
+| goodput (req/s) | 1.64 | 0.24 | **0.146** |
+| throughput (tok/s) | 74.7 | 47.5 | **0.636** |
+
+Verdict: **fail**, on both metrics. The gate is calibrated and can fail on the machine it actually runs on.
+
 ## What this does not tell you
 
-* The CI runner is a different, slower, noisier machine. Its noise floor has not been measured yet. Run the
-  `perf-calibrate` workflow (Actions tab) to measure it there before relying on the threshold, and record the result
-  here. If 3 req/s turns out to be far above what the runner can serve, the gate reports "inconclusive" instead of
-  passing.
+* Only 4 A/A pairs and 3 slowdown pairs were measured on the runner. Runner performance varies between days and
+  hosts, so occasional false alarms are possible; the artifact uploaded by every release run records the numbers.
+* If a runner is ever too slow to serve the offered load at all, the gate reports "inconclusive" and fails closed
+  instead of passing.
 * A slowdown smaller than about 15% is not detectable with 3 pairs. More pairs tighten this at the cost of CI time.
 * It measures one CPU shape at one load level. The full benchmark under `results/bench` remains the source of every
   published number.

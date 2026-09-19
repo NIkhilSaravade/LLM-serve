@@ -68,7 +68,7 @@
     "area": "Delivery",
     "claim": "A canary aborts a release that passes readiness but breaches the SLO",
     "status": "verified",
-    "how": "Run on a local kind cluster under steady traffic: the good release was promoted, the release that rejects requests was aborted by the Prometheus analysis, capacity never dropped and the stable pods kept serving. Not yet run on GitHub.",
+    "how": "Run on a local kind cluster and again in GitHub Actions under steady traffic: the good release was promoted, the release that rejects requests was aborted by the Prometheus analysis, capacity never dropped and the stable pods kept serving.",
     "source": "is aborted by the analysis with nobody intervening",
     "doc": "docs/07-operations.md"
   },
@@ -76,16 +76,16 @@
     "area": "Delivery",
     "claim": "The performance gate tells a real slowdown from noise",
     "status": "verified",
-    "how": "Locally: identical images scored a goodput ratio of 0.94; a candidate given half the CPU scored 0.30 and failed the 0.85 threshold.",
+    "how": "On the GitHub runner: identical images scored goodput ratio 0.976 and throughput 1.001; a candidate given 2 CPUs instead of 3 scored 0.146 and 0.636 and failed the 0.85 threshold.",
     "source": "produced ratios of 0.30 and 0.33 and failed the gate",
     "doc": "docs/07-operations.md"
   },
   {
     "area": "Delivery",
-    "claim": "The performance gate is calibrated on the CI runner",
+    "claim": "The performance gate reads a real regression from a candidate build",
     "status": "not-verified",
-    "how": "The noise floor was measured on a development machine only. A runner too slow for the offered load reports inconclusive and fails closed.",
-    "source": "has not been calibrated on the GitHub runner yet",
+    "how": "Only synthetic slowdowns (less CPU) have been tested. No commit has yet made the engine genuinely slower, so how the gate behaves on a real code regression is untested.",
+    "source": "has not been judged against a real code regression",
     "doc": "docs/07-operations.md"
   },
   {
