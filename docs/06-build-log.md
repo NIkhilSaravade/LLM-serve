@@ -610,3 +610,17 @@ write-up.
 | M4 paged cache | 2026-09-19 | 2.9x throughput at 128 MiB, KV efficiency 0.95 vs 0.12 | paged is 8-17% slower when memory is plentiful (gather cost) |
 | M5 preemption | 2026-09-19 | all requests finish at 3x capacity; latency plateaus ~5-8 s p99 TTFT | preemption almost never fired; worst-case admission did as well |
 | M6 benchmarks + page | 2026-09-19 | continuous batching 3.5x goodput over static (2.83 vs 0.80 req/s); paging wins only when memory binds | the harness broke three ways (double runs, zombie requests, timeout); the engine did not |
+
+## 2026-09-19: results page deployed
+
+Pushed to github.com/NIkhilSaravade/LLM-serve (MIT) and connected to Cloudflare Pages by Git integration
+(build `npm --prefix site-src ci && npm --prefix site-src run build`, output `site`, Node 22 from `.node-version`),
+with the custom domain `llm-serve.nikhilsaravade.com`. The Workers workflow was made manual-only.
+
+**What broke:** the first-ever GitHub Actions run failed one job of five: the container smoke test named its
+container `s`, which Docker rejects (names need two characters). Renamed; the next run passed all five jobs.
+
+**Verified live:** `curl -I` returns 200 with the CSP, HSTS, nosniff, frame and cache headers from
+`public/_headers`; HTML is `max-age=0, must-revalidate`; an unknown path returns 404; `og:image` uses the custom
+domain. The Hosting row of the verification matrix is now "verified". Still untested: Firefox and Safari, and the
+browser suite against the live URL.

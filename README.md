@@ -6,7 +6,7 @@ batching and a paged KV cache against naive serving.
 Start with [docs/00-project-brief.md](docs/00-project-brief.md). The plan is in
 [docs/02-milestones.md](docs/02-milestones.md); progress and every measurement are in
 [docs/06-build-log.md](docs/06-build-log.md). Working rules are in [CLAUDE.md](CLAUDE.md).
-The public results page is built from [site-src/](site-src/) (React, TypeScript, Tailwind, Motion) and deployed to Cloudflare Pages at `llm-serve.nikhilsaravade.com`; see [docs/08-deploying-the-site.md](docs/08-deploying-the-site.md). Preview it locally with `make site && npm --prefix site-src run preview`.
+The public results page is built from [site-src/](site-src/) (React, TypeScript, Tailwind, Motion) and deployed to Cloudflare Pages at **https://llm-serve.nikhilsaravade.com**; see [docs/08-deploying-the-site.md](docs/08-deploying-the-site.md). Preview it locally with `make site && npm --prefix site-src run preview`.
 
 ## Results
 

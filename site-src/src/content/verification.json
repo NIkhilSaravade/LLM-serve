@@ -51,9 +51,9 @@
   {
     "area": "Hosting",
     "claim": "This page is live on Cloudflare",
-    "status": "not-verified",
-    "how": "The Wrangler configuration validates with a dry run and the production headers are tested locally, but the site has not been deployed.",
-    "source": "has not been deployed to Cloudflare yet",
+    "status": "verified",
+    "how": "Deployed with Cloudflare Pages Git integration; a curl of the live URL returns 200 with the CSP, HSTS and cache headers from public/_headers.",
+    "source": "is live on Cloudflare Pages",
     "doc": "docs/08-deploying-the-site.md"
   }
 ]

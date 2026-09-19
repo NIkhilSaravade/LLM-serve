@@ -6,9 +6,11 @@ whole path from source to a public URL, and what has and has not been checked.
 
 ## Status
 
-The site **has not been deployed to Cloudflare yet.** The build, the security headers, the caching rules and the
-Pages settings below are verified locally (see "What is verified"); the Cloudflare Pages project has not been
-created at the time of writing.
+The site **is live on Cloudflare Pages** at https://llm-serve.nikhilsaravade.com (deployed 2026-09-19 from `main`
+by Git integration). A `curl -I` of the live URL returned 200 with the full header set from `public/_headers`
+(CSP with `script-src 'self'`, HSTS, `nosniff`, `X-Frame-Options: DENY`, COOP/CORP, Permissions-Policy) and
+`Cache-Control: public, max-age=0, must-revalidate` on the HTML; an unknown path returns 404. Compare with
+"What is verified" for what was and was not checked.
 
 ## What ships
 
@@ -108,9 +110,13 @@ Verified on a development machine:
   interactions, on desktop and on a mobile viewport.
 - `wrangler deploy --dry-run` accepts `site-src/wrangler.jsonc` (the alternative path).
 
-Not verified: an actual Pages deployment, that Pages honours `_headers` exactly as the local server does (it is
-documented to, and step 7 above checks it), the GitHub Actions workflow (it has run only as far as the CI
-results show), and behaviour in Firefox or Safari (the tests use Chromium only).
+Verified on the live URL (2026-09-19, by `curl`): status 200, every header in the table below present, HTML not
+cached, canonical and `og:image` pointing at the custom domain, 404 for an unknown path. The GitHub Actions `ci`
+workflow passes all five jobs on `main`.
+
+Not verified: the browser tests against the live URL (they run against the local server with the same
+`_headers`), the `/assets/*` immutable cache header on the live site, and behaviour in Firefox or Safari (the tests
+use Chromium only).
 
 ## Costs and limits
 
