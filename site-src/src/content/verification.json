@@ -55,5 +55,21 @@
     "how": "Deployed with Cloudflare Pages Git integration; a curl of the live URL returns 200 with the CSP, HSTS and cache headers from public/_headers.",
     "source": "is live on Cloudflare Pages",
     "doc": "docs/08-deploying-the-site.md"
+  },
+  {
+    "area": "Delivery",
+    "claim": "Every commit on main is built, published, deployed to Kubernetes and rolled back on a bad release",
+    "status": "verified",
+    "how": "release.yml ran green on GitHub: image pushed to GHCR, rolled out to a kind cluster, smoke-tested, a build that cannot start was contained with no capacity loss and rolled back.",
+    "source": "requires that capacity never drops and that the rollback restores the previous build",
+    "doc": "docs/07-operations.md"
+  },
+  {
+    "area": "Delivery",
+    "claim": "The engine runs in a long-lived production cluster",
+    "status": "not-verified",
+    "how": "The rollout runs on an ephemeral cluster inside CI. Nothing serves real traffic and no performance gate is part of the pipeline.",
+    "source": "there is no long-lived production cluster, so nothing serves real traffic",
+    "doc": "docs/07-operations.md"
   }
 ]

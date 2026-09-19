@@ -24,6 +24,13 @@ Continuous batching is the big win. Paging changes goodput only when KV memory b
 vs 0.18 req/s) or load is high (8 req/s: 1.77 vs 0.83). Limitations and deviations from the plan
 (scaled-down workloads, fewer requests per run) are on the page and in the build log.
 
+## Delivery
+
+After `ci` passes on `main`, [release.yml](.github/workflows/release.yml) publishes an image tagged with the commit
+SHA to GHCR, deploys it to a `kind` cluster with the production manifests, smoke-tests it, ships a deliberately bad
+release and requires containment plus rollback, then promotes the image to `stable`. There is no long-lived
+production cluster, and no performance gate in the pipeline.
+
 ## Running it like a service
 
 The engine is packaged and instrumented to be operated, not just benchmarked
