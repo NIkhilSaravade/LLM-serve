@@ -225,6 +225,7 @@ def main() -> None:
 <li><b>Static baseline is generous:</b> finished rows leave the compute (a naive server would keep computing them) and tokens stream as produced. Continuous batching's gain over it is therefore conservative.</li>
 <li><b>Machine:</b></li></ul><ul>{mach_html}</ul>
 <p>Reproduce: <code>./scripts/run_bench.sh</code> then <code>make results</code>. Raw per-request data is committed under <code>results/bench/</code>.</p>
+<p>Every deviation from the original methodology (scaled workloads, shorter runs, the admission cap) is listed in <code>docs/04-benchmark-methodology.md</code>, and the harness problems found while running it (and how the numbers were protected from them) are in <code>docs/06-build-log.md</code>. This desktop's speed drifts between sessions, so numbers are compared within a session only. The server is also packaged to be operated: Prometheus metrics, a Grafana dashboard, a container image and Kubernetes manifests, described in <code>docs/07-operations.md</code>, including what has and has not been verified.</p>
 
 <h2 id=limitations>Limitations</h2>
 <ul>

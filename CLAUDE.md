@@ -55,34 +55,52 @@ Read `docs/00-project-brief.md` for the full context before starting real work.
 | Model | GPT-2 small (124M), `transformers` for weights + tokenizer only | Small, well documented, learned position embeddings (simple). |
 | API layer | FastAPI + uvicorn | Fine. Not the point of the project. |
 | Load generator | **Go** | Concurrent load generation with accurate timing is what Go is good at. |
-| Metrics output | Plain JSON files in `results/` | No Prometheus, no Grafana. Keep it reproducible. |
+| Benchmark output | Plain JSON files in `results/` | Keep it reproducible. Benchmark numbers never depend on Prometheus or Grafana. |
 | Plotting | Python + matplotlib, run from a script | Charts must regenerate from the JSON with one command. |
+| Operations layer | Prometheus `/metrics`, Grafana, Docker, Kubernetes, GitHub Actions | Added on 2026-09-19 at the user's explicit request, to make the project credible for MLOps roles. It is packaging and observability only: it must not change engine behaviour or any benchmark number. See `docs/07-operations.md`. |
 
 ## Repo layout
 
 ```
 llm-serve/
 ├── CLAUDE.md
-├── docs/                  # read these; they are the spec
+├── README.md              # results summary + how to run
+├── docs/                  # read these; they are the spec (00-05), the log (06) and the runbook (07)
 ├── engine/                # Python: the actual server
-│   ├── api.py             # FastAPI layer
+│   ├── api.py             # FastAPI layer: /generate (streaming), /health /ready /metrics /version /stats
 │   ├── request.py         # Request object + state machine
-│   ├── scheduler.py       # THE CORE. iteration-level scheduling
-│   ├── block_manager.py   # THE CORE. paged KV cache allocator
-│   ├── model_runner.py    # forward pass for one batch step
-│   ├── cache.py           # KV cache storage
-│   └── metrics.py         # counters, timings
-├── bench/                 # Go: load generator
+│   ├── scheduler.py       # THE CORE. iteration-level scheduling, preemption, EngineLoop thread
+│   ├── block_manager.py   # THE CORE. slot allocator + paged KV block allocator
+│   ├── model_runner.py    # our own GPT-2 forward pass, one batch step
+│   ├── cache.py           # KV cache storage: single cache, slot pool, paged pool
+│   ├── config.py          # EngineConfig: every ablation row is one config
+│   ├── detokenizer.py     # streaming detokenisation that holds back partial UTF-8
+│   ├── metrics.py         # counters and timings behind the benchmark JSON
+│   └── observability.py   # Prometheus metrics for operators
+├── bench/                 # Go: open-loop Poisson load generator
 │   ├── main.go
 │   └── report.go
 ├── tests/
 │   ├── fixtures/          # golden outputs, committed to git
-│   └── test_golden.py
-├── results/               # benchmark JSON, committed to git
+│   ├── conftest.py
+│   ├── test_golden.py     # reference match, batching, continuous batching, streaming
+│   ├── test_paged.py      # block boundaries, scattered blocks, block-table contents
+│   ├── test_preemption.py # eviction exactness, admission control, cancellation
+│   ├── test_ops.py        # health/metrics API, dashboards and alerts vs live /metrics
+│   └── test_perf_guard.py # wall-clock throughput guard (marker: perf)
+├── results/               # milestone JSON + results/bench/ (one file per load-generator run)
 ├── scripts/
-│   ├── make_fixtures.py   # regenerate golden fixtures from HF reference
+│   ├── make_fixtures.py   # regenerate golden fixtures from HF reference (only place generate() is allowed)
 │   ├── run_bench.sh       # one command, reproduces every published number
-│   └── plot.py
+│   ├── bench_offline.py   # in-process milestone benchmarks (M2-M5)
+│   ├── bench_m0.py, bench_m1.py, workloads.py, machine_info.py, bench_data.py
+│   ├── plot.py            # charts from results/bench
+│   ├── build_site.py      # site/index.html from results/bench
+│   ├── build_dashboard.py # Grafana dashboard JSON
+│   └── render_prometheus_rule.py  # Kubernetes PrometheusRule from deploy/prometheus/alerts.yml
+├── deploy/                # docker-compose, Prometheus, Grafana, Kubernetes manifests
+├── Dockerfile
+├── .github/workflows/ci.yml
 └── site/                  # the public results page
 ```
 
@@ -90,11 +108,18 @@ llm-serve/
 
 ```bash
 make setup          # venv + deps
-make test           # golden tests. must be green.
+make test           # 102 tests, golden ones included. must be green. (excludes the noisy perf guard)
+make perf           # wall-clock throughput guard; run on a quiet machine
 make serve          # start the engine on :8000
-make bench          # run the Go load generator against a running engine
-make results        # regenerate plots + tables from results/*.json
+make bench          # about 2 hours: every configuration, every sweep, into results/bench/
+make results        # regenerate plots + site/index.html from results/bench
+make lint           # ruff
+make docker         # build the image
+make up / make down # server + Prometheus + Grafana locally
+make deploy-check   # generated files current, Kubernetes manifests render
 ```
+
+On Windows without GNU make use `.\make.ps1 <target>` (same targets as the Makefile).
 
 If a command does not exist yet, create it in the Makefile rather than telling
 the user a long shell incantation.
@@ -102,7 +127,8 @@ the user a long shell incantation.
 ## How to work in this repo
 
 - Work one milestone at a time. The current milestone is tracked at the top of
-  `docs/06-build-log.md`.
+  `docs/06-build-log.md`. M0-M6 are complete; the stretch goals in
+  `docs/02-milestones.md` have not been started.
 - Before writing code for a milestone, restate the "done" criteria from
   `docs/02-milestones.md` and confirm they are understood.
 - After finishing a milestone, append an entry to `docs/06-build-log.md`:

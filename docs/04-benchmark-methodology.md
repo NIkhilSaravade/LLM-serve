@@ -157,3 +157,65 @@ looking for it, and finding it well-written is a stronger signal than any chart.
 Commit the JSON to git. Then a reader can check your charts against your raw
 data without running anything at all. Very few portfolio projects do this, and it
 takes about twenty minutes to set up.
+
+---
+
+# As run (2026-09-19)
+
+What the published numbers (`results/bench/`, `site/index.html`) actually were, including every
+place this differs from the spec above. Nothing here was tuned after seeing a result.
+
+## Definitions as implemented (`bench/report.go`)
+
+- **TTFT** is measured from the request's *scheduled* arrival, not from when the generator got
+  round to sending it, so generator lateness cannot hide server latency. Maximum send lateness is
+  recorded in every run.
+- **TPOT** = `(e2e - ttft) / (output_tokens - 1)`, as specified.
+- **Goodput** = requests that completed and met both per-request SLOs (TTFT <= 2 s, TPOT <= 200 ms),
+  divided by the arrival window. Rejected, errored and unfinished requests count against it (SLO
+  attainment is over everything offered). The SLOs are the doc's suggestion, fixed before measuring.
+- **Throughput** = output tokens of completed requests divided by `max(window, last completion)`.
+- Percentiles use `round(p/100 * (n-1))`, identically in Go and Python.
+
+## Deviations from the spec, and why
+
+| Spec | As run | Why |
+|---|---|---|
+| Prompt/output medians ~200/~150; C output 20-800 | medians 64/48 (B), 64/40 with heavier tail capped at 400 (C), fixed 64/64 (A) | full-size runs were too slow on CPU to repeat three times for every configuration. Shape of the length distribution, which drives the result, is preserved. Decided before measuring (`scripts/workloads.py`) |
+| "A few hundred completed requests per data point" | 60-90 offered per run, 30 s arrival window plus 20 s drain | same reason; compensated with 3 seeds (ablation, load curves) or 2 seeds (sweeps) |
+| Three seeds for every configuration | sweeps used 2 | run time |
+| Unspecified admission policy | queue cap 64 for every variant | uniform across variants; rejections count as SLO failures |
+| One offered load | A and B at 3 req/s, C at 2 req/s; load curve 1-8 req/s | offered loads fixed up front; rate 3 comes from the ablation runs and is reused on the curves |
+| Ablation KV budget unspecified | 512 MiB, chosen before measuring | a budget where contiguous slots are scarce; the KV-budget sweep and the 2 GiB rows show where it does not matter |
+| Prompts | random token ids, `ignore_eos` on every request | output length is exactly the sampled value; batching behaviour depends on lengths, not text |
+
+The Go generator and `scripts/workloads.py` implement the same distributions with different random
+number generators, so the request streams differ; the parameters are identical.
+
+## Static baseline is generous on purpose
+
+Finished rows leave the compute (a naive server keeps computing padded finished rows) and tokens are
+streamed as produced (most servers return the batch at the end). Continuous batching's gain over
+this baseline is therefore conservative.
+
+## Harness problems found and fixed during the run
+
+Documented in `docs/06-build-log.md` (M2 and M6): first-touch page faults inflating one variant's
+numbers (memory is now touched before the timer starts); two copies of the runner sharing a port
+(a lock now prevents it); abandoned requests continuing to run on the server (requests are now
+cancelled on disconnect). Everything measured before the last fix was deleted and re-run.
+
+## Machine drift
+
+This desktop's speed varies between sessions. On 2026-09-19 the same configuration and seed measured
+224.8 tok/s during the benchmark and about 107 tok/s hours later, on both the old and new code. Runs
+within a session are comparable; runs across sessions are not. The benchmark interleaves nothing
+across configurations (each configuration runs to completion in turn), so slow drift inside the two
+hours could bias one configuration; the repeated seeds show the within-configuration spread, which
+is reported as min-max next to every median.
+
+## Reproducing
+
+`make bench` (about 2 hours), then `make results`. The script is resumable and refuses to run twice
+at once. `results/bench/machine.json` records the hardware, `torch` version and thread count (4,
+identical for every variant).

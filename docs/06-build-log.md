@@ -462,6 +462,27 @@ provisions the dashboard, and all 19 panel queries return data under real load; 
 healthy run. **Not verified:** the manifests on a live cluster, any alert actually firing, the GitHub
 Actions workflow (no remote). All listed in `docs/07-operations.md`.
 
+### 2026-09-19 — documentation pass and a check of the tests themselves
+
+**Goal:** bring the docs in line with the code, and test the claim that the golden tests would catch
+the bugs they exist for, since they never failed against the engine.
+
+**What I changed:** `CLAUDE.md` (its tech table still said "no Prometheus, no Grafana"; layout and
+commands were stale; the ops layer is now recorded as a deliberate, user-requested addition),
+`make.ps1` (missing targets), and "as built" or status sections appended to `docs/00` through
+`docs/05`, leaving the original plan text untouched so the differences stay visible. README gained a
+documentation index.
+
+**The check:** I injected four bugs (decode position off by one, a mask that lets a query see one
+position too many, a block allocation one short at a boundary, preemption dropping generated tokens)
+and ran the relevant tests. Three were caught immediately. **One was missed**: after a preemption
+the final output was still exact, because greedy decoding regenerates the same tokens, but a client
+would have received the early tokens twice. My tests compared final outputs only, never the stream.
+Wrong mental model: "output equality means the token stream is right". Added
+`test_client_sees_each_token_exactly_once_across_preemption`; the injected bug is now caught. The
+suite is 102 tests (plus the excluded perf guard). This was a manual spot check of four bugs, not a
+mutation-testing suite, and the docs say so.
+
 ---
 
 ## Milestone summary table

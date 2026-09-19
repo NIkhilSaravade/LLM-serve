@@ -1,5 +1,11 @@
 # PROMPTS.md — what to paste into Claude Code
 
+> **Note (2026-09-19):** this file is the plan for driving the build session by session. In practice
+> M0-M6 were built in one run, keeping the per-milestone gate (golden tests green, a number in
+> `results/`, a log entry, a commit) but not the one-session-per-milestone pacing. Pacing is what
+> you want if the goal is to learn the mechanisms. The record of what happened is
+> `docs/06-build-log.md`.
+
 Copy these one at a time. Do not paste two milestones at once. The whole design
 of this project is that each milestone is verified before the next one starts.
 

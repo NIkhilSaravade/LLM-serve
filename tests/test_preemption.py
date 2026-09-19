@@ -110,3 +110,23 @@ def test_cancelled_requests_stop_consuming_capacity_and_free_memory(engine):
     assert len(keep.output_token_ids) == 40                      # the survivor is unaffected
     assert len(eng.manager.free_blocks) == eng.manager.num_blocks  # everything returned
     assert eng.sched.metrics.summary(1.0)["requests"] == 1        # abandoned work not counted
+
+
+def test_client_sees_each_token_exactly_once_across_preemption(engine):
+    """The stream a client receives must equal the final output: no duplicated or dropped tokens
+    when a request is evicted and recomputed. Comparing only final outputs misses this, because
+    greedy decoding regenerates the same tokens after a recompute."""
+    eng = tight(engine)
+    fxs = [FIXTURES[n] for n in BATCHES["mixed_8"]]
+    streams = [[] for _ in fxs]
+    reqs = []
+    for f, stream in zip(fxs, streams):
+        r = Request(uuid.uuid4().hex, list(f["prompt_token_ids"]), f["max_new_tokens"])
+        r.sink = lambda tok, fin, s=stream: s.append(tok)
+        reqs.append(r)
+        eng.sched.submit(r)
+    while eng.sched.has_work():
+        eng.sched.step()
+    assert eng.sched.metrics.preemptions > 0
+    for f, stream in zip(fxs, streams):
+        assert stream == f["expected_token_ids"], f["name"]

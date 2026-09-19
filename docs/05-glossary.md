@@ -247,3 +247,65 @@ makes sampling useless as a correctness signal.
 
 Hence: greedy everywhere in tests. Sampling, if added at all, is a feature, never
 a test.
+
+---
+
+## Terms added while building and operating it
+
+**Open-loop load.** Requests are sent at scheduled times whether or not earlier ones have finished.
+A slow server then builds a queue, as in production. The opposite, closed-loop (send the next request
+when the previous returns), quietly slows the generator down when the server is slow and hides
+overload. The benchmark is open-loop.
+
+**Poisson arrivals.** Gaps between requests are exponentially distributed, giving the random mix of
+busy and idle moments real traffic has. A fixed gap or a single burst is easier on the server than
+either.
+
+**Goodput.** Requests per second that finish *and* meet the latency target. Requests that were
+rejected or finished too slowly do not count, so it cannot be inflated by letting latency explode.
+
+**Slot utilisation (measured under saturation).** Only meaningful when work is always waiting: at low
+load an empty slot is not waste, there was simply nothing to run. It was measured separately with a
+saturating burst.
+
+**KV token efficiency.** Live tokens divided by allocated token capacity. About 0.12 for contiguous
+slots (each reserves 1024 tokens) and about 0.95 for paged blocks: the number that shows what paging
+saves.
+
+**Padding waste.** Attention width spent on padding when rows in a batch have different lengths. The
+price of a padded (not ragged) batch; 0.39 under continuous batching in the burst measurement.
+
+**Worst-case commit.** Admit a request only if the maximum memory every running request could ever
+need still fits. Never runs out of memory, but limits concurrency to the worst case. Replaced in M5
+by optimistic admission plus preemption.
+
+**Headroom.** Free blocks kept back at admission (one per running request) so that admitting a new
+request does not force an immediate eviction.
+
+**Cancellation.** When a client disconnects the server stops the request and frees its memory.
+Without it, abandoned requests keep consuming compute and KV blocks.
+
+**Backpressure / load shedding.** Refusing work you cannot serve (HTTP 429 with `Retry-After`) rather
+than queueing it without bound. Protects the latency of the requests you do accept.
+
+**Liveness vs readiness.** Liveness asks "should this process be restarted?" (here: is the scheduler
+thread alive). Readiness asks "should it receive traffic?" (here: model loaded and warmed up). Mixing
+them up restarts pods that are merely busy.
+
+**SLI, SLO, error budget.** An SLI is a measured quantity (share of requests with TTFT under 2 s), an
+SLO is the target for it (99%), the error budget is the allowed miss (1%).
+
+**Burn rate.** How fast the error budget is being spent relative to the rate that would exactly use it
+up over the SLO window. The page-level alert fires when the burn rate is 14.4x over both an hour and
+five minutes: fast enough to matter, sustained enough not to be noise.
+
+**Histogram quantile.** Prometheus stores latency as counts per bucket, and `histogram_quantile`
+estimates a percentile from them. Bucket edges are chosen around the SLO, so the estimate is accurate
+where it matters (near 2 s) and coarse where it does not.
+
+**Cardinality.** The number of distinct label combinations a metric has. Labelling by request id or
+prompt would create unbounded series and take the metrics system down, so only bounded labels (outcome)
+are used.
+
+**Golden test.** A test that compares output to a stored reference exactly. Here the reference is the
+HuggingFace greedy output, compared as token ids.

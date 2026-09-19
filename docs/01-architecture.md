@@ -216,3 +216,104 @@ means re-running everything.
 
 Write them to `results/<run-name>.json`. Never compute a published number by
 hand.
+
+---
+
+# As built (2026-09-19)
+
+Everything above is the plan. This section records what the code actually does where it differs
+or adds detail. The plan is kept unedited so the differences are visible.
+
+## Data structures
+
+**Request** (`engine/request.py`) gained: `ignore_eos` (benchmarks fix the output length exactly),
+`finish_reason` (`length`, `stop`, `cancelled`), `admit_seq` (admission order, used to pick eviction
+victims), `preempt_count` (starvation guard), `cancelled` (set when the client disconnects) and
+`sink` (callback with `(token_id, finished)` invoked from the engine thread for every token).
+
+**States.** There is no separate `PREEMPTED` state. A preempted request goes back to `WAITING`,
+keeps its generated tokens, and carries `preempt_count > 0`. `FINISHED` is reached by any finish
+reason. The implementation never needed a fourth state, and the counter is what the scheduler uses.
+
+**Memory.** `engine/cache.py` holds three storage layouts behind one interface, `BatchAccess`:
+
+| Class | Layout | Used by |
+|---|---|---|
+| `ContiguousKVCache` | `[layers, 2, heads, max_len, head_dim]`, one sequence | M1 |
+| `SlotPool` | one full 1024-token slot per request | M2 and M3 |
+| `PagedPool` | `[num_blocks, heads, block_size, head_dim]` per layer, addressed by block tables | M4 and later |
+
+`engine/block_manager.py` has `SlotManager` and `BlockManager`. Both expose `can_allocate`,
+`allocate`, `append_slot`, `free`, `fits_ever` and `stats`, so the scheduler does not know which one
+it is talking to.
+
+## One forward function for prefill and decode
+
+`ModelRunner.step_tokens(token_lists, starts, pool, block_tables)` runs both. Row `i` already holds
+`starts[i]` tokens and receives `len(token_lists[i])` new ones: prefill is `start=0, n=prompt length`,
+decode is `start=seq_len-1, n=1`. New tokens are right-padded to the longest row; pad positions are
+never written and never attended to by a real row. Query `t` of row `i` sits at position
+`start_i + t` and may attend key `j` iff `j <= start_i + t` and `j < total_i`. Single-row cases keep
+the exact M1 kernels (no mask, or `is_causal`) so numerics match the single-sequence path. Only the
+last real token of each row goes through the language-model head.
+
+## The scheduler as built (`engine/scheduler.py`)
+
+```
+step():
+  retire   drop cancelled waiting requests; finish cancelled running ones; free memory of finished
+  admit    static:     only when nothing is running, one padded prefill for the whole batch
+           continuous: while there is room, prefill each admitted request on its own
+  decode   ensure capacity for every row (preempting if needed), then one batched decode step
+```
+
+- **Admission is strict FCFS**, except that previously preempted requests go first, most-preempted
+  first. It stops at the first request that does not fit, so a large request is never starved by a
+  stream of small ones.
+- **Two admission rules for paged memory** (`EngineConfig.preemption`):
+  worst-case commit (M4: admit only if the worst-case block count of every running request still
+  fits, blocks are still allocated lazily) or optimistic (M5: admit if the prompt plus one block of
+  headroom per running request fits, and evict when memory runs out).
+- **Eviction (M5):** the most recently admitted request among those preempted the fewest times.
+  Recompute preemption: free the blocks, keep the generated tokens, re-prefill prompt plus generated
+  tokens on readmission, which yields the next token directly.
+- **`EngineLoop`** runs the scheduler on its own thread. Only that thread touches scheduler state;
+  other threads hand requests over through a thread-safe inbox. It is also the front-door admission
+  control: when the queue reaches `max_queue` it refuses the request (HTTP 429).
+- **Cancellation:** the streaming handler sets `request.cancelled` when the client goes away; the
+  scheduler then drops it (waiting) or finishes and frees it (running). Without this, requests the
+  load generator abandoned kept generating and slowed every later run.
+- **`NaiveScheduler`** exists only so the M0 baseline can be served over HTTP with the same
+  interface: one request at a time, full recompute.
+
+## Position of a decode token (the M1 off-by-one, settled)
+
+Prompt length `P`, decode step `N` (1-indexed): the token fed is output token `N`, which sits at
+position `P + N - 1 = seq_len - 1`. It writes its K/V at index `P + N - 1` and attends to `P + N`
+keys. Prefill produces output token 1. The block a token needs is allocated just before the step
+that feeds it (`append_slot`), so a sequence of exactly `block_size` tokens holds one block and its
+next token opens a second.
+
+## HTTP surface (`engine/api.py`)
+
+`POST /generate` (streaming NDJSON or a single JSON body; 400 bad input, 413 request larger than the
+whole KV pool, 429 queue full), `GET /health` (liveness, fails if the scheduler thread died),
+`GET /ready` (model loaded and warmed), `GET /metrics` (Prometheus), `GET /version`, `GET /stats`
+and `POST /stats/reset` (the JSON summary the benchmark harness reads). Run one uvicorn worker per
+process: the process owns the model and the KV pool.
+
+## Metrics: two consumers, two mechanisms
+
+The table in the plan above is implemented in `engine/metrics.py` (per decode step, written into
+the benchmark JSON) with two additions: `kv_token_efficiency` (live tokens / allocated capacity,
+the number that shows what paging saves) and `attn_padding_waste` (the cost of padding). Operators
+get a separate set in `engine/observability.py`: request outcomes, TTFT/TPOT/E2E histograms, queue
+depth, running batch, KV use, preemptions. The benchmark never reads Prometheus, so its numbers do
+not depend on the operations layer. See `docs/07-operations.md`.
+
+## Memory arithmetic, checked against the running server
+
+The plan's numbers hold: 72 KiB of KV per token, 1.18 MB per 16-token block. Measured in a container
+with a 1 GiB KV budget: the server process holds 1.95 GiB resident, so the model and runtime cost
+about 0.9 GiB and the pool is resident from start-up (it is zero-filled on purpose, so page faults
+never land on a request).

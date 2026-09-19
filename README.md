@@ -25,6 +25,19 @@ Continuous batching is the big win. Paging changes goodput only when KV memory b
 vs 0.18 req/s) or load is high (8 req/s: 1.77 vs 0.83). Limitations and deviations from the plan
 (scaled-down workloads, fewer requests per run) are on the page and in the build log.
 
+## Documentation
+
+| Doc | What it is |
+|---|---|
+| [docs/00-project-brief.md](docs/00-project-brief.md) | why the project exists, success criteria, current status |
+| [docs/01-architecture.md](docs/01-architecture.md) | components and lifecycle; "As built" records what the code does |
+| [docs/02-milestones.md](docs/02-milestones.md) | the plan, plus a status table of every milestone's result and deviation |
+| [docs/03-correctness.md](docs/03-correctness.md) | the golden-test discipline, what the 102 tests cover, and a bug-injection check of them |
+| [docs/04-benchmark-methodology.md](docs/04-benchmark-methodology.md) | the method; "As run" lists every deviation and the harness problems found |
+| [docs/05-glossary.md](docs/05-glossary.md) | every concept from first principles |
+| [docs/06-build-log.md](docs/06-build-log.md) | what was built, what broke and why, every number |
+| [docs/07-operations.md](docs/07-operations.md) | SLOs, capacity, alerts, runbooks, rollout, and what is not verified |
+
 ## Running it like a service
 
 The engine is packaged and instrumented to be operated, not just benchmarked
@@ -47,7 +60,7 @@ firing, and the GitHub workflow (no remote yet). The operations doc lists these 
 ## Commands
 
 ```
-make setup && make test      # 101 tests: golden, API, metrics, deploy config
+make setup && make test      # 102 tests: golden, API, metrics, deploy config
 make perf                    # wall-clock throughput guard (noisy; run on a quiet machine)
 make serve                   # engine on :8000
 make bench                   # about 2 hours, writes results/bench/

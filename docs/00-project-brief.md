@@ -107,3 +107,19 @@ Two readers, and the page must serve both.
 - **A staff engineer** who will spend 10 minutes. They need the ablation table,
   the methodology section, and the limitations. They are looking for a reason to
   disbelieve the numbers. Give them none.
+
+---
+
+## Status (2026-09-19)
+
+Built and measured. On this CPU, continuous batching gave 3.5x the goodput of static batching
+(2.83 vs 0.80 requests/s within the latency SLO, workload B), and the paged KV cache raised memory
+efficiency from 0.12 to 0.95 tokens stored per token reserved, which converts into throughput only
+when KV memory is the constraint (128 MiB: 2.73 vs 0.18 req/s). The uniform workload, the least
+flattering one, shows no separation between the batching systems at the load tested, and preemption
+almost never fired at this scale. All of that is published as measured.
+
+The success criteria above were met with these exceptions: workload lengths were scaled about 3x down,
+and runs are shorter than "a few hundred requests per point" (`docs/04`, "As run"). A reader can
+reproduce every number with `make bench`. Beyond the brief, the server is also packaged to be
+operated (`docs/07-operations.md`). Read `docs/06-build-log.md` for the story, including what broke.
