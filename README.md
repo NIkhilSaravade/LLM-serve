@@ -75,3 +75,7 @@ make deploy-check            # generated files current, manifests render
 ```
 
 On Windows without GNU make, use `.\make.ps1 <target>`.
+
+## License
+
+[MIT](LICENSE). GPT-2 weights are downloaded from Hugging Face and remain under their own license; they are not redistributed here.
