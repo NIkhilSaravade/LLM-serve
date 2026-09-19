@@ -1,0 +1,27 @@
+# Same manifests as production, scaled down to fit a 4-vCPU CI runner and a single-node kind cluster.
+# Everything that matters for a rollout is unchanged: probes, RollingUpdate maxUnavailable 0, PDB,
+# non-root read-only container. Only sizes differ.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../k8s
+patches:
+  # No metrics-server in kind, so the HPA would sit at <unknown>. It is validated by `kubectl kustomize`
+  # in the base render, not exercised here.
+  - target: {kind: HorizontalPodAutoscaler, name: llm-serve}
+    patch: |-
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata: {name: llm-serve}
+  - target: {kind: Deployment, name: llm-serve}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: "1", memory: 1500Mi}, limits: {cpu: "2", memory: 2500Mi}}}
+      - {op: replace, path: /spec/template/spec/containers/0/lifecycle/preStop/exec/command/2, value: "import time; time.sleep(2)"}
+      - {op: replace, path: /spec/template/spec/terminationGracePeriodSeconds, value: 30}
+  - target: {kind: ConfigMap, name: llm-serve-config}
+    patch: |-
+      - {op: replace, path: /data/LLM_SERVE_THREADS, value: "2"}
+      - op: replace
+        path: /data/LLM_SERVE_CONFIG
+        value: '{"backend":"paged","batching":"continuous","max_batch":8,"kv_budget_mib":256,"block_size":16,"preemption":true,"max_queue":64}'

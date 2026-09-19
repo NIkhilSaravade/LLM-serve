@@ -11,5 +11,5 @@ resources:
 # Pin the model version by image tag, never :latest. CI sets this to the commit SHA.
 images:
   - name: llm-serve
-    newName: ghcr.io/OWNER/llm-serve
+    newName: ghcr.io/nikhilsaravade/llm-serve
     newTag: "REPLACE_WITH_GIT_SHA"

@@ -1,0 +1,112 @@
+name: release
+
+# Continuous delivery for the engine. Runs only after the whole `ci` workflow has passed on main:
+#   publish  -> build one image per commit and push it to GHCR, tagged with the commit SHA (immutable)
+#   drill    -> deploy that exact image to a real Kubernetes cluster (kind), smoke-test it, ship a
+#               deliberately bad release, and require that it is contained and rolled back
+#   promote  -> only if the drill passed, move the moving `stable` tag to this SHA
+# What a "deploy" is here: a real rollout with the production manifests (scaled down) on an ephemeral
+# cluster. There is no long-lived production cluster.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    name: build and push image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - id: meta
+        run: |
+          sha="$(git rev-parse HEAD)"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"          # registry names must be lower case
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$owner/llm-serve:$sha" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          build-args: GIT_SHA=${{ steps.meta.outputs.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.sha }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  drill:
+    name: deploy to kind and rehearse a bad release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: release
+      - name: Pull the published image into the cluster
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "${{ needs.publish.outputs.image }}"
+          kind load docker-image "${{ needs.publish.outputs.image }}" --name release
+      - name: Rollout, smoke test, bad release, automatic rollback
+        run: scripts/rollout_drill.sh "${{ needs.publish.outputs.image }}" "${{ needs.publish.outputs.sha }}"
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n llm-serve get pods,events -o wide || true
+          kubectl -n llm-serve logs -l app=llm-serve --tail=80 --all-containers || true
+
+  promote:
+    name: mark as stable
+    needs: [publish, drill]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Retag without rebuilding, so `stable` is byte-identical to the tested image
+        run: |
+          src="${{ needs.publish.outputs.image }}"
+          docker buildx imagetools create -t "${src%:*}:stable" "$src"
