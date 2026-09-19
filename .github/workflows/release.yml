@@ -160,7 +160,7 @@ jobs:
         run: >
           python scripts/perf_gate.py
           --baseline "${{ steps.pull.outputs.baseline }}" --candidate "${{ needs.publish.outputs.image }}"
-          --cpus 3 --pairs 3 --out results/perf_gate/${{ needs.publish.outputs.sha }}.json
+          --cpus 3 --rate 2 --pairs 3 --out results/perf_gate/${{ needs.publish.outputs.sha }}.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -28,8 +28,11 @@ vs 0.18 req/s) or load is high (8 req/s: 1.77 vs 0.83). Limitations and deviatio
 
 After `ci` passes on `main`, [release.yml](.github/workflows/release.yml) publishes an image tagged with the commit
 SHA to GHCR, deploys it to a `kind` cluster with the production manifests, smoke-tests it, ships a deliberately bad
-release and requires containment plus rollback, then promotes the image to `stable`. There is no long-lived
-production cluster, and no performance gate in the pipeline.
+release and requires containment plus rollback. In parallel, a canary rollout under steady traffic must promote a good
+release and abort, automatically, one that passes every probe but breaches the SLO, and a performance gate compares
+goodput and throughput with the last `stable` image on the same runner. Only if all of that passes does the image
+become `stable`. A production deployment (one k3s VM behind a Cloudflare Tunnel) is prepared as code and validated
+in CI, but it has **not been deployed**: no live service exists.
 
 ## Running it like a service
 

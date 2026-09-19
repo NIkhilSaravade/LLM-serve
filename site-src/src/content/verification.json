@@ -66,10 +66,34 @@
   },
   {
     "area": "Delivery",
-    "claim": "The engine runs in a long-lived production cluster",
+    "claim": "A canary aborts a release that passes readiness but breaches the SLO",
+    "status": "verified",
+    "how": "Run on a local kind cluster under steady traffic: the good release was promoted, the release that rejects requests was aborted by the Prometheus analysis, capacity never dropped and the stable pods kept serving. Not yet run on GitHub.",
+    "source": "is aborted by the analysis with nobody intervening",
+    "doc": "docs/07-operations.md"
+  },
+  {
+    "area": "Delivery",
+    "claim": "The performance gate tells a real slowdown from noise",
+    "status": "verified",
+    "how": "Locally: identical images scored a goodput ratio of 0.94; a candidate given half the CPU scored 0.30 and failed the 0.85 threshold.",
+    "source": "produced ratios of 0.30 and 0.33 and failed the gate",
+    "doc": "docs/07-operations.md"
+  },
+  {
+    "area": "Delivery",
+    "claim": "The performance gate is calibrated on the CI runner",
     "status": "not-verified",
-    "how": "The rollout runs on an ephemeral cluster inside CI. Nothing serves real traffic and no performance gate is part of the pipeline.",
-    "source": "there is no long-lived production cluster, so nothing serves real traffic",
+    "how": "The noise floor was measured on a development machine only. A runner too slow for the offered load reports inconclusive and fails closed.",
+    "source": "has not been calibrated on the GitHub runner yet",
+    "doc": "docs/07-operations.md"
+  },
+  {
+    "area": "Delivery",
+    "claim": "The engine is deployed to a production host",
+    "status": "not-verified",
+    "how": "The production overlay renders in CI and passes a server-side dry run against a real API server. No VM exists: the provisioning script, the SSH deploy and the tunnel have never run.",
+    "source": "Nothing has been provisioned and the workflow has never run",
     "doc": "docs/07-operations.md"
   }
 ]

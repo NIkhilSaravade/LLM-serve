@@ -12,6 +12,9 @@ on:
       pairs:
         description: Baseline/candidate pairs
         default: "4"
+      candidate_cpus:
+        description: Optional. Give ONLY the candidate this CPU limit (baseline uses 3) to prove the gate can fail on this runner
+        default: ""
 
 permissions:
   contents: read
@@ -36,7 +39,7 @@ jobs:
           img="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/llm-serve:stable"
           docker pull "$img"
           python scripts/perf_gate.py --baseline "$img" --candidate "$img" --cpus 3 \
-            --rate "${{ inputs.rate }}" --pairs "${{ inputs.pairs }}" --report-only --out results/perf_gate/aa_ci.json
+            --rate "${{ inputs.rate }}" --pairs "${{ inputs.pairs }}" --candidate-cpus "${{ inputs.candidate_cpus }}"             --report-only --out results/perf_gate/aa_ci.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
