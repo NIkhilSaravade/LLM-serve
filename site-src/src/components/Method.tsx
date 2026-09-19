@@ -101,7 +101,6 @@ export function Reproduce() {
               <tr><th scope="row">Scripts and benchmarks</th><td className="r num">{n(loc.scripts)} lines</td></tr>
               <tr><th scope="row">This page (TypeScript)</th><td className="r num">{n(loc.site_typescript)} lines</td></tr>
               <tr><th scope="row">Deployment</th><td className="r num">{f.k8s_manifests} manifests, {f.alert_rules} alerts</td></tr>
-              <tr><th scope="row">Documentation</th><td className="r num">{f.docs_pages} documents</td></tr>
               <tr><th scope="row">Total code</th><td className="r num">{n(total)} lines</td></tr>
             </tbody>
           </table>

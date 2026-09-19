@@ -84,7 +84,6 @@ export interface SiteData {
     recording_rules: number
     dashboard_panels: number
     k8s_manifests: number
-    docs_pages: number
     golden_fixtures: number
   }
   stall: {

@@ -111,7 +111,6 @@ def facts() -> dict:
         "recording_rules": sum(1 for r in rules if "record" in r),
         "dashboard_panels": len(dash["panels"]),
         "k8s_manifests": len(list((ROOT / "deploy" / "k8s").glob("*.yaml"))) + len(list((ROOT / "deploy" / "k8s" / "monitoring").glob("*.yaml"))),
-        "docs_pages": len(list((ROOT / "docs").glob("*.md"))),
         "golden_fixtures": len([p for p in (ROOT / "tests" / "fixtures").glob("*.json") if p.stem != "batches"]),
     }
 
