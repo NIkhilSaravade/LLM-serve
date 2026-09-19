@@ -10,7 +10,7 @@ switch ($Target) {
   }
   "test"    { & $vpy -m pytest -q }
   "serve"   { & $vpy -m uvicorn engine.api:app --port 8000 }
-  "bench"   { Write-Host "not implemented (M6)" }
-  "results" { Write-Host "not implemented (M6)" }
+  "bench"   { bash scripts/run_bench.sh }
+  "results" { & $vpy scripts/plot.py; & $vpy scripts/build_site.py }
   default   { Write-Host "targets: setup test serve bench results" }
 }

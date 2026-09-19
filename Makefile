@@ -22,7 +22,8 @@ serve:
 	$(VPY) -m uvicorn engine.api:app --port 8000
 
 bench:
-	@echo "not implemented (M6)"
+	bash scripts/run_bench.sh
 
 results:
-	@echo "not implemented (M6)"
+	$(VPY) scripts/plot.py
+	$(VPY) scripts/build_site.py

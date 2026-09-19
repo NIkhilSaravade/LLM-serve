@@ -79,7 +79,12 @@ def create_app(cfg: EngineConfig | None = None) -> FastAPI:
         req = Request(uuid.uuid4().hex, ids, body.max_new_tokens, ignore_eos=body.ignore_eos)
         # The sink runs on the engine thread; hop back onto the event loop safely.
         req.sink = lambda t, fin: loop.call_soon_threadsafe(events.put_nowait, (t, fin))
-        state["loop"].submit(req)
+        eff_max = min(body.max_new_tokens, 1024 - len(ids))
+        manager = getattr(engine, "manager", None)
+        if manager is not None and not manager.fits_ever(len(ids), eff_max):
+            raise HTTPException(413, "request needs more KV memory than the server has")
+        if not state["loop"].submit(req):
+            raise HTTPException(429, "overloaded: queue is full", headers={"Retry-After": "1"})
         detok = IncrementalDetokenizer(tok)
 
         async def events_iter():

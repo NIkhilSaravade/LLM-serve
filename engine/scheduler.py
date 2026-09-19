@@ -14,8 +14,8 @@ import threading
 import time
 import uuid
 
-from engine.block_manager import SlotManager
-from engine.cache import SlotPool
+from engine.block_manager import BlockManager, SlotManager
+from engine.cache import PagedPool, SlotPool
 from engine.config import EngineConfig
 from engine.metrics import EngineMetrics
 from engine.model_runner import EOS_TOKEN_ID, MAX_CONTEXT, ModelRunner
@@ -60,8 +60,14 @@ class Scheduler:
 
     def _pop_admissible(self, limit: int) -> list[Request]:
         """FCFS: stop at the first request that does not fit, so big requests are not starved."""
+        # Starvation guard: requests that were preempted before go first, worst-treated first.
+        self.waiting.sort(key=lambda r: (-r.preempt_count, r.arrival_time))
         batch: list[Request] = []
-        while self.waiting and len(batch) < limit and self.manager.can_allocate(self.waiting[0]):
+        # Headroom: every running or just-admitted request may need a fresh block next step.
+        # Admitting into a completely full pool would only force an immediate preemption.
+        while (self.waiting and len(batch) < limit
+               and self.manager.can_allocate(self.waiting[0],
+                                             headroom=len(self.running) + len(batch))):
             req = self.waiting.pop(0)
             self.manager.allocate(req)
             req.admit_seq = self._admit_counter
@@ -102,6 +108,10 @@ class Scheduler:
         batch = [r for r in self.running if not r.finished]
         if not batch:
             return
+        batch = self._ensure_capacity(batch)
+        if not batch:
+            return
+        self.metrics.peak_batch = max(self.metrics.peak_batch, len(batch))
         t0 = time.perf_counter()
         # The token fed in is the last one produced; it sits at position seq_len - 1.
         nxt = self.runner.step_tokens([[r.output_token_ids[-1]] for r in batch],
@@ -116,6 +126,44 @@ class Scheduler:
             pad_frac=self.runner.last_pad_frac)
         for req, tok in zip(batch, nxt):
             self._emit(req, tok)
+
+    # ------------------------------------------------------------------ preemption (M5)
+    def _ensure_capacity(self, batch: list[Request]) -> list[Request]:
+        """Give every row the block its next token needs; preempt when the pool is full.
+
+        Older requests are served first. When a block cannot be found, evict a victim:
+        the most recently admitted request among those preempted the fewest times, so the
+        least work is thrown away and nobody is evicted forever.
+        """
+        active = sorted(batch, key=lambda r: r.admit_seq)
+        i = 0
+        while i < len(active):
+            req = active[i]
+            if self.manager.append_slot(req):
+                i += 1
+                continue
+            if not self.cfg.preemption:
+                raise RuntimeError("out of KV blocks and preemption is disabled")
+            victim = min(active, key=lambda r: (r.preempt_count, -r.admit_seq))
+            vi = active.index(victim)
+            active.pop(vi)
+            if vi < i:
+                i -= 1
+            self._preempt(victim)
+            # If the victim was `req` itself, active[i] is now the next request; otherwise we
+            # retry `req` with the memory just freed.
+        return active
+
+    def _preempt(self, req: Request) -> None:
+        # Preempt-and-recompute: throw the KV away and re-prefill prompt + generated tokens
+        # on readmission. LIMITATION: recomputation wastes the work already done; swapping the
+        # blocks to host RAM would avoid that at the cost of copy traffic and more code.
+        self.manager.free(req)
+        self.running.remove(req)
+        req.state = RequestState.WAITING
+        req.preempt_count += 1
+        self.metrics.preemptions += 1
+        self.waiting.append(req)
 
     def _emit(self, req: Request, tok: int) -> None:
         now = time.perf_counter()
@@ -175,11 +223,17 @@ class Engine:
         if cfg.backend == "naive":
             self.sched: Scheduler | NaiveScheduler = NaiveScheduler(cfg, self.runner)
             return
-        # LIMITATION: contiguous slots each reserve the full 1024-token context up front.
-        n_slots = min(cfg.max_batch,
-                      SlotManager.slots_for_budget(cfg.kv_budget_mib * 1024 * 1024))
-        self.pool = SlotPool(n_slots)
-        self.manager = SlotManager(n_slots)
+        budget = cfg.kv_budget_mib * 1024 * 1024
+        if cfg.backend == "paged":
+            n_blocks = BlockManager.blocks_for_budget(budget, cfg.block_size)
+            self.pool = PagedPool(n_blocks, cfg.block_size)
+            self.manager = BlockManager(n_blocks, cfg.block_size,
+                                        reserve_max_new=not cfg.preemption)
+        else:
+            # LIMITATION: contiguous slots each reserve the full 1024-token context up front.
+            n_slots = min(cfg.max_batch, SlotManager.slots_for_budget(budget))
+            self.pool = SlotPool(n_slots)
+            self.manager = SlotManager(n_slots)
         self.sched = Scheduler(cfg, self.runner, self.pool, self.manager)
 
     def generate_batch(self, prompts: list[list[int]], max_new: list[int]) -> list[list[int]]:
@@ -230,9 +284,19 @@ class EngineLoop:
         self._wake.set()
         self._thread.join(timeout=10)
 
-    def submit(self, req: Request) -> None:
+    def queue_depth(self) -> int:
+        return self.inbox.qsize() + len(self.sched.waiting)
+
+    def submit(self, req: Request) -> bool:
+        """Front-door admission control: refuse work we cannot serve rather than let the queue
+        (and every request's latency) grow without bound. Returns False if rejected."""
+        cap = self.engine.cfg.max_queue
+        if cap is not None and self.queue_depth() >= cap:
+            self.sched.metrics.rejected += 1
+            return False
         self.inbox.put(req)
         self._wake.set()
+        return True
 
     def _run(self) -> None:
         while not self._stop.is_set():

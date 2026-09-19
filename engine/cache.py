@@ -122,3 +122,66 @@ class SlotPool:
     def access(self, block_tables: list[list[int]], starts: list[int], ns: list[int]) -> SlotAccess:
         # For slot-backed requests the "block table" is a one-element list holding the slot.
         return SlotAccess(self, [bt[0] for bt in block_tables], starts, ns)
+
+
+class PagedAccess(BatchAccess):
+    """Reads and writes K/V through per-request block tables (M4)."""
+
+    def __init__(self, pool: "PagedPool", block_tables: list[list[int]], starts: list[int],
+                 ns: list[int]) -> None:
+        super().__init__(starts, ns)
+        self.pool, self.tables = pool, block_tables
+        bs = pool.block_size
+        nb = -(-self.lk // bs)                      # blocks covering the longest row
+        # Rows with fewer blocks are padded with block 0: it is a real block whose contents
+        # are simply masked out (`key < total`), so it never influences a result.
+        padded = [bt[:nb] + [0] * (nb - len(bt[:nb])) for bt in block_tables]
+        self.bt_t = torch.tensor(padded)
+        # Same masks as the contiguous path, at the exact key width `lk`, so the attention
+        # kernels (and therefore the numerics) are identical.
+        self.mask, self.is_causal = self.build_mask(self.lk)
+        if self.t == 1:
+            self.dec_blocks = torch.tensor([bt[s // bs] for bt, s in zip(block_tables, starts)])
+            self.dec_offs = torch.tensor(starts) % bs
+
+    def write(self, layer: int, k: torch.Tensor, v: torch.Tensor) -> None:
+        pk, pv = self.pool.k[layer], self.pool.v[layer]
+        if self.t == 1:  # decode: one vectorised scatter, one token per row
+            pk[self.dec_blocks, :, self.dec_offs] = k[:, :, 0]
+            pv[self.dec_blocks, :, self.dec_offs] = v[:, :, 0]
+            return
+        bs = self.pool.block_size
+        for i, (bt, s, n) in enumerate(zip(self.tables, self.starts, self.ns)):
+            pos = torch.arange(s, s + n)
+            blocks = torch.tensor(bt)[pos // bs]
+            offs = pos % bs
+            pk[blocks, :, offs] = k[i, :, :n].transpose(0, 1)
+            pv[blocks, :, offs] = v[i, :, :n].transpose(0, 1)
+
+    def gather(self, layer: int) -> tuple[torch.Tensor, torch.Tensor]:
+        # LIMITATION: attention needs K/V that live in scattered blocks. vLLM's PagedAttention
+        # is a fused CUDA kernel that walks the block table inside the attention computation.
+        # We cannot write that here, so every layer of every step copies the needed blocks
+        # into a temporary contiguous buffer and runs ordinary attention on the copy. Correct,
+        # but it moves roughly the whole KV cache through memory once per token.
+        b, nb = self.bt_t.shape
+        bs = self.pool.block_size
+        out = []
+        for pool_t in (self.pool.k[layer], self.pool.v[layer]):
+            g = pool_t[self.bt_t]                                   # [B, nb, H, bs, D]
+            g = g.permute(0, 2, 1, 3, 4).reshape(b, N_HEADS, nb * bs, HEAD_DIM)
+            out.append(g[:, :, :self.lk])                           # drop the tail of the last block
+        return out[0], out[1]
+
+
+class PagedPool:
+    """One flat pool of fixed-size blocks per layer: [num_blocks, heads, block_size, head_dim]."""
+
+    def __init__(self, num_blocks: int, block_size: int) -> None:
+        self.num_blocks, self.block_size = num_blocks, block_size
+        # zeros so pages are touched at startup (see SlotPool).
+        self.k = [torch.zeros(num_blocks, N_HEADS, block_size, HEAD_DIM) for _ in range(N_LAYERS)]
+        self.v = [torch.zeros(num_blocks, N_HEADS, block_size, HEAD_DIM) for _ in range(N_LAYERS)]
+
+    def access(self, block_tables: list[list[int]], starts: list[int], ns: list[int]) -> PagedAccess:
+        return PagedAccess(self, block_tables, starts, ns)

@@ -94,7 +94,11 @@ def run_open_loop(runner: ModelRunner, cfg: EngineConfig, reqs: list[tuple[list[
         rec = {"req": r, "times": [], "injected": injected}
         r.sink = make_sink(rec)
         records.append(rec)
-        loop.submit(r)
+        if not loop.submit(r):          # refused by admission control: never runs
+            with lock:
+                remaining[0] -= 1
+                if remaining[0] == 0:
+                    done.set()
     finished = done.wait(timeout)
     end = time.perf_counter()
     loop.stop()
@@ -207,5 +211,88 @@ def bench_m3_saturated() -> None:
     write_json(path, d)
 
 
+def bench_m5() -> None:
+    """Overload: offered load from well under capacity to far past it, at a tight KV budget.
+
+    Three systems, same workload, same seeds:
+      m5      paged + preemption (optimistic admission) + admission control (queue cap 32)
+      m4      paged, worst-case-commit admission, unbounded queue (no admission control)
+      m3      contiguous slots, unbounded queue
+    """
+    runner = ModelRunner()
+    reqs = make_requests("B", 60, seed=1)
+    run_open_loop(runner, EngineConfig(max_batch=2), reqs[:4], rate=4.0, seed=0)  # warmup
+    systems = {
+        "m5_paged_preempt_admission": dict(backend="paged", preemption=True, max_queue=32),
+        "m4_paged_reserve": dict(backend="paged", preemption=False),
+        "m3_contiguous": dict(backend="contiguous", preemption=False),
+    }
+    rows = []
+    for rate in (1.0, 2.0, 4.0, 6.0, 8.0, 12.0):
+        for name, kw in systems.items():
+            r = run_open_loop(runner, EngineConfig(batching="continuous", max_batch=32,
+                                                    kv_budget_mib=128, block_size=16, **kw),
+                              reqs, rate, seed=13, timeout=180)
+            r.pop("_gaps")
+            r["system"] = name
+            rows.append(r)
+            print(f"rate={rate:4.1f} {name:28s} done={r['requests']:2d} rej={r['rejected']:2d} "
+                  f"preempt={r['preemptions']:3d} tput={r['throughput_tok_per_s']:6.1f} "
+                  f"goodput={r['goodput_req_per_s']:.2f} "
+                  f"ttft p99={r['ttft_p99_s'] or 0:5.2f} e2e p99={r['e2e_p99_s'] or 0:6.2f} "
+                  f"all_done={r['completed_all']}")
+    write_json(ROOT / "results" / "m5_overload.json", {
+        "milestone": "M5", "workload": "B (scaled)", "requests_per_point": len(reqs),
+        "arrival": "open-loop Poisson", "kv_budget_mib": 128, "max_batch": 32, "block_size": 16,
+        "rows": rows, "machine": machine(runner)})
+
+
+def bench_m4() -> None:
+    """Paged vs contiguous KV under a fixed memory budget, plus the block-size sweep.
+    Closed-loop burst (keeps work waiting, so memory is what limits concurrency)."""
+    runner = ModelRunner()
+    reqs = make_requests("B", 96, seed=1)
+    run_closed(runner, EngineConfig(max_batch=2), reqs[:4])  # warmup
+    keys = ("throughput_tok_per_s", "peak_batch", "kv_utilisation", "kv_token_efficiency",
+            "slot_utilisation", "wall_s")
+
+    import statistics
+
+    def one(**kw) -> dict:
+        r = run_closed(runner, EngineConfig(batching="continuous", max_batch=32, **kw), reqs)
+        return {**{k: r[k] for k in keys}, "config": r["config"]}
+
+    def sweep(points: list[dict], reps: int = 3) -> list[dict]:
+        """Repetitions are interleaved across points (rep-major) so slow drift in machine state
+        hits every point equally. A single run of one config varied 195-292 tok/s."""
+        runs: list[list[dict]] = [[] for _ in points]
+        for rep in range(reps):
+            for i, kw in enumerate(points):
+                runs[i].append(one(**kw))
+        out = []
+        for kw, rs in zip(points, runs):
+            tps = [r["throughput_tok_per_s"] for r in rs]
+            out.append({**kw, "throughput_median_tok_per_s": statistics.median(tps),
+                        "throughput_runs": tps,
+                        # memory metrics are deterministic; identical across repetitions
+                        **{k: rs[0][k] for k in ("peak_batch", "kv_utilisation",
+                                                 "kv_token_efficiency", "slot_utilisation")}})
+            print(kw, f"median={statistics.median(tps):.1f} runs={[round(t) for t in tps]} "
+                      f"peak_batch={rs[0]['peak_batch']} kv_eff={rs[0]['kv_token_efficiency']:.2f}")
+        return out
+
+    budget_curve = sweep([dict(backend=b, kv_budget_mib=m, block_size=16)
+                          for m in (128, 256, 512, 1024, 2048) for b in ("contiguous", "paged")])
+    block_sweep = sweep([dict(backend="paged", kv_budget_mib=256, block_size=bs)
+                         for bs in (4, 8, 16, 32, 64)])
+    write_json(ROOT / "results" / "m4_paged.json", {
+        "milestone": "M4", "workload": "B (scaled)", "requests": len(reqs), "repetitions": 3,
+        "arrival": "closed-loop burst", "max_batch": 32,
+        "admission": "worst-case commit (no preemption)",
+        "budget_curve": budget_curve, "block_size_sweep_at_256MiB": block_sweep,
+        "machine": machine(runner)})
+
+
 if __name__ == "__main__":
-    {"m2": bench_m2, "m3": bench_m3, "m3sat": bench_m3_saturated}[sys.argv[1]]()
+    {"m2": bench_m2, "m3": bench_m3, "m3sat": bench_m3_saturated, "m4": bench_m4,
+     "m5": bench_m5}[sys.argv[1]]()

@@ -48,6 +48,7 @@ class EngineMetrics:
     kv_eff_steps: float = 0.0           # sum of (live tokens / allocated token capacity)
     queue_depth_steps: int = 0
     pad_frac_steps: float = 0.0         # sum of wasted attention width per step (padding)
+    peak_batch: int = 0                 # most rows ever decoded in one step
     prefills: int = 0
     prefill_seconds: float = 0.0
     decode_seconds: float = 0.0
@@ -83,6 +84,7 @@ class EngineMetrics:
             "output_tokens": self.tokens_out,
             "throughput_tok_per_s": self.tokens_out / wall_seconds if wall_seconds else 0.0,
             "decode_steps": self.steps,
+            "peak_batch": self.peak_batch,
             "slot_utilisation": self.occupied_slot_steps / (s * self.max_slots),
             "kv_utilisation": self.kv_used_steps / s,
             "kv_token_efficiency": self.kv_eff_steps / s,

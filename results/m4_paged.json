@@ -1,0 +1,244 @@
+{
+  "milestone": "M4",
+  "workload": "B (scaled)",
+  "requests": 96,
+  "repetitions": 3,
+  "arrival": "closed-loop burst",
+  "max_batch": 32,
+  "admission": "worst-case commit (no preemption)",
+  "budget_curve": [
+    {
+      "backend": "contiguous",
+      "kv_budget_mib": 128,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 72.23706361488816,
+      "throughput_runs": [
+        82.9158672233949,
+        72.23706361488816,
+        65.92634737227608
+      ],
+      "peak_batch": 1,
+      "kv_utilisation": 1.0,
+      "kv_token_efficiency": 0.1209577451065304,
+      "slot_utilisation": 0.03125
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 128,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 212.85416163470478,
+      "throughput_runs": [
+        218.29567561218118,
+        212.85416163470478,
+        153.36728256239908
+      ],
+      "peak_batch": 13,
+      "kv_utilisation": 0.6562798620632326,
+      "kv_token_efficiency": 0.9440514483126851,
+      "slot_utilisation": 0.2823258998435055
+    },
+    {
+      "backend": "contiguous",
+      "kv_budget_mib": 256,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 122.15370447239226,
+      "throughput_runs": [
+        123.23831210809468,
+        122.15370447239226,
+        94.90846963474768
+      ],
+      "peak_batch": 3,
+      "kv_utilisation": 0.9843137254901961,
+      "kv_token_efficiency": 0.12128456681585568,
+      "slot_utilisation": 0.09227941176470589
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 256,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 239.64364218678435,
+      "throughput_runs": [
+        241.10964566514448,
+        239.64364218678435,
+        172.2302237819438
+      ],
+      "peak_batch": 25,
+      "kv_utilisation": 0.5422278162366273,
+      "kv_token_efficiency": 0.9489042724779924,
+      "slot_utilisation": 0.46858766233766236
+    },
+    {
+      "backend": "contiguous",
+      "kv_budget_mib": 512,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 203.26571357129734,
+      "throughput_runs": [
+        204.34287129421105,
+        203.26571357129734,
+        151.60394937768632
+      ],
+      "peak_batch": 7,
+      "kv_utilisation": 0.9425306122448994,
+      "kv_token_efficiency": 0.12481888552295908,
+      "slot_utilisation": 0.20617857142857143
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 512,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 229.55250590959335,
+      "throughput_runs": [
+        229.55250590959335,
+        241.59119692884684,
+        169.7305793260157
+      ],
+      "peak_batch": 32,
+      "kv_utilisation": 0.31276111276111385,
+      "kv_token_efficiency": 0.9530825127182253,
+      "slot_utilisation": 0.5417605105105106
+    },
+    {
+      "backend": "contiguous",
+      "kv_budget_mib": 1024,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 255.0134851686788,
+      "throughput_runs": [
+        256.191330128333,
+        255.0134851686788,
+        186.78901303526234
+      ],
+      "peak_batch": 14,
+      "kv_utilisation": 0.857291357291358,
+      "kv_token_efficiency": 0.1341796508788696,
+      "slot_utilisation": 0.3750649688149688
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 1024,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 234.35459560955906,
+      "throughput_runs": [
+        234.35459560955906,
+        239.9719243071082,
+        196.32750879337453
+      ],
+      "peak_batch": 32,
+      "kv_utilisation": 0.15638055638055692,
+      "kv_token_efficiency": 0.9530825127182253,
+      "slot_utilisation": 0.5417605105105106
+    },
+    {
+      "backend": "contiguous",
+      "kv_budget_mib": 2048,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 291.0716506319891,
+      "throughput_runs": [
+        291.0716506319891,
+        287.3379356394093,
+        340.35637556822127
+      ],
+      "peak_batch": 28,
+      "kv_utilisation": 0.5924671592775027,
+      "kv_token_efficiency": 0.16634994215335336,
+      "slot_utilisation": 0.5184087643678161
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 2048,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 240.14006438280018,
+      "throughput_runs": [
+        235.959660442543,
+        240.14006438280018,
+        257.7426740268105
+      ],
+      "peak_batch": 32,
+      "kv_utilisation": 0.07819027819027846,
+      "kv_token_efficiency": 0.9530825127182253,
+      "slot_utilisation": 0.5417605105105106
+    }
+  ],
+  "block_size_sweep_at_256MiB": [
+    {
+      "backend": "paged",
+      "kv_budget_mib": 256,
+      "block_size": 4,
+      "throughput_median_tok_per_s": 241.18373783985186,
+      "throughput_runs": [
+        241.18373783985186,
+        252.63837282189996,
+        174.03180442048327
+      ],
+      "peak_batch": 25,
+      "kv_utilisation": 0.525966625966626,
+      "kv_token_efficiency": 0.9893854729278259,
+      "slot_utilisation": 0.47726521164021163
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 256,
+      "block_size": 8,
+      "throughput_median_tok_per_s": 240.86254152457983,
+      "throughput_runs": [
+        240.86254152457983,
+        242.82465856484114,
+        176.91906573421673
+      ],
+      "peak_batch": 25,
+      "kv_utilisation": 0.5343857201000064,
+      "kv_token_efficiency": 0.975384675512421,
+      "slot_utilisation": 0.47726521164021163
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 256,
+      "block_size": 16,
+      "throughput_median_tok_per_s": 262.09403190771667,
+      "throughput_runs": [
+        274.14311219610187,
+        241.7376897614127,
+        262.09403190771667
+      ],
+      "peak_batch": 25,
+      "kv_utilisation": 0.5422278162366273,
+      "kv_token_efficiency": 0.9489042724779924,
+      "slot_utilisation": 0.46858766233766236
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 256,
+      "block_size": 32,
+      "throughput_median_tok_per_s": 246.16411382721765,
+      "throughput_runs": [
+        281.3134580478253,
+        234.80620234676053,
+        246.16411382721765
+      ],
+      "peak_batch": 23,
+      "kv_utilisation": 0.5615893447751842,
+      "kv_token_efficiency": 0.8996120509292489,
+      "slot_utilisation": 0.4555713383838384
+    },
+    {
+      "backend": "paged",
+      "kv_budget_mib": 256,
+      "block_size": 64,
+      "throughput_median_tok_per_s": 224.96439772620812,
+      "throughput_runs": [
+        271.80708749231394,
+        224.96439772620812,
+        167.69215558096872
+      ],
+      "peak_batch": 22,
+      "kv_utilisation": 0.6112570028011216,
+      "kv_token_efficiency": 0.8160575314467652,
+      "slot_utilisation": 0.44217218137254904
+    }
+  ],
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i7-14700K",
+    "logical_cores": 28,
+    "torch": "2.14.0+cpu",
+    "torch_threads": 4
+  }
+}
