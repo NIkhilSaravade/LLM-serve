@@ -8,7 +8,7 @@ else
   VPY := $(VENV)/bin/python
 endif
 
-.PHONY: setup test perf serve bench results lint docker up down deploy-check
+.PHONY: setup test perf serve bench results site site-setup site-test plots lint docker up down deploy-check
 
 setup:
 	$(BOOTSTRAP_PY) -m venv $(VENV)
@@ -27,9 +27,22 @@ serve:
 bench:
 	bash scripts/run_bench.sh
 
-results:
-	$(VPY) scripts/plot.py
+results: site
+
+site-setup:
+	npm --prefix site-src ci
+	npx --prefix site-src playwright install chromium
+
+# data.json from results/bench (Python), then the single-file page into site/index.html (Vite)
+site:
 	$(VPY) scripts/build_site.py
+	npm --prefix site-src run build
+
+site-test: site
+	npm --prefix site-src run test:visual
+
+plots:
+	$(VPY) scripts/plot.py
 
 lint:
 	$(VPY) -m ruff check engine scripts tests --select E9,F

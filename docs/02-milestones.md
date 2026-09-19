@@ -286,7 +286,7 @@ Read `docs/04-benchmark-methodology.md` in full before starting.
   output length distributions, precise per-request timing, JSON output.
 - `scripts/run_bench.sh` — one command, runs every configuration, writes every
   JSON file.
-- `scripts/plot.py` — regenerates every chart from the JSON.
+- `scripts/plot.py` — regenerates every chart from the JSON. (As built, the page draws its own charts from `site-src/src/data.json`; `plot.py` remains as an optional static-image export.)
 - `site/` — the public results page.
 
 ### Done when
@@ -325,7 +325,7 @@ M7 every time.
 | M1 KV cache | `results/m1_kvcache.json` | 81.4 tok/s, 6.2x over M0 | none; the 400-token fixture passed first time |
 | M2 static batching | `results/m2_static.json` | 145 tok/s at batch 16, slot util 0.54 | utilisation was 0.54, not "well under 50%" for workload B; static baseline is deliberately generous (finished rows leave the compute, tokens stream as produced) |
 | M3 continuous batching | `results/m3_continuous.json` | 231 vs 170 tok/s saturated (+36%), slot util 0.94 vs 0.43 | slot util is only meaningful under saturation, so it was measured with a saturating burst; padding waste rose to 0.39 |
-| M4 paged KV cache | `results/m4_paged.json` | 2.9x throughput at 128 MiB, KV efficiency 0.95 vs 0.12 | M4 has no preemption, so admission commits worst-case blocks (prompt + max_new_tokens) while still allocating lazily; paging was 8-18% slower when memory was plentiful |
+| M4 paged KV cache | `results/m4_paged.json` | 2.9x throughput at 128 MiB, KV efficiency 0.95 vs 0.12 | M4 has no preemption, so admission commits worst-case blocks (prompt + max_new_tokens) while still allocating lazily; paging was 8-17% slower when memory was plentiful |
 | M5 preemption | `results/m5_overload.json` | every request finished at 3x capacity | preemption almost never fired at this scale and was not better than M4's admission; kept because it makes optimistic admission safe |
 | M6 benchmarks + page | `results/bench/`, `site/index.html` | continuous batching 3.5x the goodput of static | workloads scaled ~3x down; 60-90 requests per run rather than a few hundred; see `docs/04` |
 

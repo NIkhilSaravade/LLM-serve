@@ -57,6 +57,7 @@ Read `docs/00-project-brief.md` for the full context before starting real work.
 | Load generator | **Go** | Concurrent load generation with accurate timing is what Go is good at. |
 | Benchmark output | Plain JSON files in `results/` | Keep it reproducible. Benchmark numbers never depend on Prometheus or Grafana. |
 | Plotting | Python + matplotlib, run from a script | Charts must regenerate from the JSON with one command. |
+| Results page | React + Tailwind CSS + Motion, built by Vite into one file | Added on 2026-09-19 at the user's request for a high-end page. Every number is read from `site-src/src/data.json`, which `scripts/build_site.py` writes from the raw run files, so `make bench && make site` still reproduces the page. Nothing on it is typed by hand. |
 | Operations layer | Prometheus `/metrics`, Grafana, Docker, Kubernetes, GitHub Actions | Added on 2026-09-19 at the user's explicit request, to make the project credible for MLOps roles. It is packaging and observability only: it must not change engine behaviour or any benchmark number. See `docs/07-operations.md`. |
 
 ## Repo layout
@@ -94,14 +95,17 @@ llm-serve/
 │   ├── run_bench.sh       # one command, reproduces every published number
 │   ├── bench_offline.py   # in-process milestone benchmarks (M2-M5)
 │   ├── bench_m0.py, bench_m1.py, workloads.py, machine_info.py, bench_data.py
-│   ├── plot.py            # charts from results/bench
-│   ├── build_site.py      # site/index.html from results/bench
+│   ├── plot.py            # optional static PNG charts into results/plots
+│   ├── build_site.py      # results/bench + results/m*.json -> site-src/src/data.json (every number on the page)
 │   ├── build_dashboard.py # Grafana dashboard JSON
 │   └── render_prometheus_rule.py  # Kubernetes PrometheusRule from deploy/prometheus/alerts.yml
 ├── deploy/                # docker-compose, Prometheus, Grafana, Kubernetes manifests
+├── site-src/              # React + Tailwind + Motion source of the results page (Vite builds it into site/)
+│   ├── src/               # components, styles, data.json (generated, committed)
+│   └── tests/site.spec.js # Playwright: desktop + mobile, no errors, no overflow, numbers present
 ├── Dockerfile
 ├── .github/workflows/ci.yml
-└── site/                  # the public results page
+└── site/                  # the built results page: ONE self-contained index.html (generated, committed)
 ```
 
 ## Commands
@@ -112,7 +116,10 @@ make test           # 102 tests, golden ones included. must be green. (excludes 
 make perf           # wall-clock throughput guard; run on a quiet machine
 make serve          # start the engine on :8000
 make bench          # about 2 hours: every configuration, every sweep, into results/bench/
-make results        # regenerate plots + site/index.html from results/bench
+make site           # regenerate the results page from results/bench (Python data step, then Vite)
+make site-test      # ... and verify it in desktop + mobile Chromium with Playwright
+make site-setup     # npm ci + Chromium, once
+make plots          # optional static PNG charts
 make lint           # ruff
 make docker         # build the image
 make up / make down # server + Prometheus + Grafana locally

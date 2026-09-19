@@ -152,7 +152,7 @@ looking for it, and finding it well-written is a stronger signal than any chart.
 ## Reproducibility
 
 `./scripts/run_bench.sh` must regenerate every JSON file in `results/`, and
-`scripts/plot.py` must regenerate every chart from those files.
+`scripts/plot.py` must regenerate every chart from those files. (As built: `make site` regenerates the results page, whose charts are drawn from the same files; `plot.py` is an optional PNG export.)
 
 Commit the JSON to git. Then a reader can check your charts against your raw
 data without running anything at all. Very few portfolio projects do this, and it
@@ -216,6 +216,6 @@ is reported as min-max next to every median.
 
 ## Reproducing
 
-`make bench` (about 2 hours), then `make results`. The script is resumable and refuses to run twice
+`make bench` (about 2 hours), then `make site` (or its alias `make results`). The script is resumable and refuses to run twice
 at once. `results/bench/machine.json` records the hardware, `torch` version and thread count (4,
 identical for every variant).

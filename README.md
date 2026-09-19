@@ -6,7 +6,7 @@ batching and a paged KV cache against naive serving.
 Start with [docs/00-project-brief.md](docs/00-project-brief.md). The plan is in
 [docs/02-milestones.md](docs/02-milestones.md); progress and every measurement are in
 [docs/06-build-log.md](docs/06-build-log.md). Working rules are in [CLAUDE.md](CLAUDE.md).
-The public results page is [site/index.html](site/index.html).
+The public results page is [site/index.html](site/index.html): one self-contained file (open it from disk, no server, no network).
 
 ## Results
 
@@ -64,7 +64,9 @@ make setup && make test      # 102 tests: golden, API, metrics, deploy config
 make perf                    # wall-clock throughput guard (noisy; run on a quiet machine)
 make serve                   # engine on :8000
 make bench                   # about 2 hours, writes results/bench/
-make results                 # charts and site/index.html
+make site                    # page data from results/bench, then site/index.html (needs Node, once: make site-setup)
+make site-test               # ... and open it in desktop and mobile Chromium: no errors, no overflow, numbers present
+make plots                   # optional static PNG charts in results/plots
 make lint                    # ruff
 make docker                  # build the image
 make up / make down          # server + Prometheus + Grafana

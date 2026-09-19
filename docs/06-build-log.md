@@ -274,7 +274,7 @@ equally.
   criterion is met clearly.
 - Throughput: paged wins **2.9x at 128 MiB and 2.0x at 256 MiB**, roughly ties at 512 MiB,
   and is **slower once memory stops binding**: 234 vs 255 at 1 GiB and 240 vs 291 at 2 GiB
-  (about 8-18% lower). That is the price of the gather copy plus the worst-case admission rule,
+  (about 8-17% lower). That is the price of the gather copy plus the worst-case admission rule,
   and it is published as measured. Paging does not make things faster when there is plenty of
   memory; it makes the same memory go further.
 - Block size (256 MiB): efficiency 0.99 / 0.98 / 0.95 / 0.90 / 0.82 for blocks of 4 / 8 / 16 /
@@ -483,6 +483,63 @@ Wrong mental model: "output equality means the token stream is right". Added
 suite is 102 tests (plus the excluded perf guard). This was a manual spot check of four bugs, not a
 mutation-testing suite, and the docs say so.
 
+### 2026-09-19 — results page rebuilt as a designed, animated site
+
+**Goal:** replace the generated report page with a high-end one (React, Tailwind, Motion), built with
+design skills and verified in a real browser. Outside the original plan; requested by the user. It
+changes no measurement.
+
+**Setting up the design stack, and what I did not do.** The requested commands were checked before
+running, because skills are instructions that steer the code I write and installing them downloads
+third-party code.
+- `skills` (the installer) is the real vercel-labs CLI. `emilkowalski/skills` exists and was installed.
+- `pykaku/impeccable` does **not exist**; the real project is `pbakaus/impeccable`, which I assumed was meant.
+- `design/taste` does **not exist** and a search found no obvious candidate, so it was not installed.
+  I did not guess. If a specific repository was meant, it can be added the same way.
+- Installed project-scoped, for Claude Code only, as copies (`.claude/skills`, git-ignored;
+  `skills-lock.json` is committed). I read the skills and scanned the bundled scripts: the only network
+  references are localhost, for an optional live-editing mode.
+- **Impeccable's launcher would download and run a binary from a remote server** on first use, and
+  offers a hook that re-runs it after every edit. I did not run it and did not enable hooks: installing
+  a skill is not the same as agreeing to execute a downloaded executable. I used the skills as written
+  guidance only, which the skill documents as its fallback.
+- **Figma MCP was not configured.** It needs the user's Figma account and a token, and there is no Figma
+  file for this project. Playwright was installed (Chromium) and used.
+
+**Design decisions from the guidance I read:** one authored motion moment (the headline rising out of a
+clip) instead of the same entrance on every section; quiet reveals, ease-out only, UI feedback under
+300 ms, press feedback on buttons, nothing scales from zero; no card grids, eyebrow labels, section
+numbers, gradient text or hero-metric tiles; a serif display face against Geist, with mono only for
+numbers; 6 px radius and hairline rules; one colour per system on every chart; reduced-motion users get
+final states. Fonts are self-hosted and inlined, so the whole page is one 797 KB file (409 KB gzipped)
+with no network requests.
+
+**Honesty rules baked into the design:** every animation is tagged either Illustration (a simplified
+simulation, with its own computed counters) or Measured (drawn from data). Each illustration has the
+real measured value it stands in for underneath. The negative results are a full section with the same
+weight as the wins, the workload tabs default to the least flattering one (A), and every chart has a
+table view, keyboard access and min-to-max whiskers. All numbers come from `site-src/src/data.json`,
+which `scripts/build_site.py` writes from the raw run files; even prose such as "8 to 17 percent slower"
+is computed (this corrected "8-18%" in older docs, which was my rounding of 17.5).
+
+**The verification loop found real defects** (two batched screenshot rounds, desktop and mobile):
+- The headline wrapped to four lines; axis tops sat below the data so whiskers and the 328 ms stall peak
+  spilled out of the plot and the peak label collided with the legend; the "Naive" label floated at the
+  chart edge although its line stops at 4 req/s; the naive row showed a KV efficiency of 0.00 although it
+  has no KV cache (now a dash); two illustration headers overlapped; the batching timeline started
+  half-empty; and the illustrations reused the chart's system colours for individual requests, which
+  contradicts "colour follows the entity".
+- **On mobile the illustrations were clipped at the right edge.** SVGs with a fixed pixel width blew out
+  their grid column. **My first overflow test did not catch it**: `overflow-x: hidden` on the body hid
+  the overflow the test measured. Wrong mental model: "the test passed, so the layout is fine". I removed
+  the hiding and made the test check every element's right edge against the viewport. Lesson: a check
+  that cannot fail is not a check.
+
+**Wiring:** `make site` (Python data step, then Vite), `make site-test` (Playwright in desktop and mobile
+Chromium: no console errors, no external requests, no element wider than the viewport, headline numbers
+present, both illustrations labelled), a CI job for both, and docs updated. `scripts/plot.py` remains as an
+optional PNG export into `results/plots`.
+
 ---
 
 ## Milestone summary table
@@ -496,6 +553,6 @@ write-up.
 | M1 KV cache | 2026-09-19 | 81.41 tok/s, 6.2x over M0 | golden test passed first time; runs agreed within 1% (M0 did not) |
 | M2 static batching | 2026-09-19 | 145 tok/s at batch 16 (2.5x batch 1), slot util 0.54 | an uninitialised pool made identical runs differ by 40%; page faults in the timed region |
 | M3 continuous batching | 2026-09-19 | 231 vs 170 tok/s saturated (+36%), slot util 0.94 vs 0.43, p99 TTFT 0.70 s vs 4.06 s at 4 req/s | continuous batching pads 39% of attention width; one 800-token prefill doubled the worst token gap |
-| M4 paged cache | 2026-09-19 | 2.9x throughput at 128 MiB, KV efficiency 0.95 vs 0.12 | paged is 8-18% slower when memory is plentiful (gather cost) |
+| M4 paged cache | 2026-09-19 | 2.9x throughput at 128 MiB, KV efficiency 0.95 vs 0.12 | paged is 8-17% slower when memory is plentiful (gather cost) |
 | M5 preemption | 2026-09-19 | all requests finish at 3x capacity; latency plateaus ~5-8 s p99 TTFT | preemption almost never fired; worst-case admission did as well |
 | M6 benchmarks + page | 2026-09-19 | continuous batching 3.5x goodput over static (2.83 vs 0.80 req/s); paging wins only when memory binds | the harness broke three ways (double runs, zombie requests, timeout); the engine did not |

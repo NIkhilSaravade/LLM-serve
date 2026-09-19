@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bench_data import ROOT, aggregate, load_runs  # noqa: E402
 
-IMG = ROOT / "site" / "img"
+IMG = ROOT / "results" / "plots"   # optional static charts; the page draws its own from data.json
 SURFACE, INK, INK2, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9"
 BLUE, ORANGE, AQUA, YELLOW, MAGENTA = "#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"
 

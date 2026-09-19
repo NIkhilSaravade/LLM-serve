@@ -12,7 +12,11 @@ switch ($Target) {
   "perf"    { & $vpy -m pytest -q -m perf }
   "serve"   { & $vpy -m uvicorn engine.api:app --port 8000 }
   "bench"   { bash scripts/run_bench.sh }
-  "results" { & $vpy scripts/plot.py; & $vpy scripts/build_site.py }
+  "site-setup" { npm --prefix site-src ci; npx --prefix site-src playwright install chromium }
+  "site"    { & $vpy scripts/build_site.py; npm --prefix site-src run build }
+  "site-test" { & $vpy scripts/build_site.py; npm --prefix site-src run build; npm --prefix site-src run test:visual }
+  "results" { & $vpy scripts/build_site.py; npm --prefix site-src run build }
+  "plots"   { & $vpy scripts/plot.py }
   "lint"    { & $vpy -m ruff check engine scripts tests --select E9,F }
   "docker"  { docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) -t llm-serve . }
   "up"      { docker compose -f deploy/docker-compose.yml up --build }
@@ -23,5 +27,5 @@ switch ($Target) {
     kubectl kustomize deploy/k8s | Out-Null
     kubectl kustomize deploy/k8s/monitoring | Out-Null
   }
-  default   { Write-Host "targets: setup test perf serve bench results lint docker up down deploy-check" }
+  default   { Write-Host "targets: setup test perf serve bench results site site-setup site-test plots lint docker up down deploy-check" }
 }

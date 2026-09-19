@@ -60,6 +60,34 @@ jobs:
       - run: go vet ./...
       - run: go build -o /tmp/llm-bench .
 
+  site:
+    name: results page builds and renders
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements.txt
+      - name: Page data is current with the raw results
+        run: |
+          python scripts/build_site.py
+          git diff --exit-code site-src/src/data.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site-src/package-lock.json
+      - run: npm --prefix site-src ci
+      - run: npm --prefix site-src run build
+      # Opens the built single file from disk in desktop and mobile Chromium: no console errors,
+      # no external requests, no element wider than the viewport, headline numbers present.
+      - run: npx --prefix site-src playwright install --with-deps chromium
+      - run: npm --prefix site-src run test:visual
+
   kubernetes:
     name: manifests render
     runs-on: ubuntu-latest

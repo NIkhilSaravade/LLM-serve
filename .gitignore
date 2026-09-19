@@ -6,3 +6,7 @@ __pycache__/
 bench/llm-bench
 bench/*.exe
 .claude/
+site-src/node_modules/
+site-src/.shots/
+site-src/test-results/
+results/plots/
