@@ -1,6 +1,6 @@
 # 06 — Build log
 
-**Current milestone: M6**
+**Current milestone: complete (M0-M6). Stretch goals not started.**
 
 ---
 
@@ -336,6 +336,87 @@ What this shows, and what it does not:
 
 **Next:** M6, benchmarks and the public page.
 
+### 2026-09-19 — M6 — benchmarks and the public page
+
+**Goal today:** publish honest numbers: Go load generator, one command that reproduces every
+figure, charts and a page generated from the raw JSON.
+
+**What I built:** `bench/main.go` + `bench/report.go` (open-loop Poisson arrivals, TTFT measured from
+the scheduled arrival so generator lateness cannot hide server latency, per-token timestamps,
+warmup discarded, SLO goodput, server-side counters pulled from `/metrics`);
+`scripts/run_bench.sh` (starts each server config, drives it, idempotent and resumable, lock file);
+`scripts/machine_info.py`; `scripts/bench_data.py` (loads and aggregates over seeds);
+`scripts/plot.py` (12 charts, reference palette, fixed colour per system);
+`scripts/build_site.py` (single-file `site/index.html`, every number computed from the JSON, the
+limitations section extracted from the `# LIMITATION:` comments); `make bench` / `make results`.
+171 runs in `results/bench/`, about 2 hours of wall time.
+
+**What broke, and why (three things, all in the harness; none changed the engine's tokens):**
+1. *Two benchmark scripts ran at once.* Stopping a background task did not kill the script's child
+   processes, so a second copy started while the first was alive. Both used port 8000 and the
+   numbers were mixed. Symptoms: garbled interleaved log lines and a result file older than my
+   cleanup. I deleted everything, killed every process by Windows PID, and added a lock directory so
+   a second copy now refuses to start. Wrong mental model: "stopping the task stops what it started".
+2. *Abandoned requests kept running server-side.* When the load generator gave up on unfinished
+   requests at the cutoff, the server kept generating them. Overloaded runs left about four
+   minutes of backlog that slowed the next run and leaked into its measurement, so a 50 s run took
+   nearly 5 minutes of wall time. Fix: cancel a request when its client disconnects
+   (`Request.cancelled`, set in the streaming handler's `finally`; the scheduler drops cancelled
+   waiting requests and frees cancelled running ones; abandoned work is not counted as served).
+   Unit-tested, and checked over real HTTP: after overloading a naive server, a fresh request
+   returned immediately. Everything measured before this fix was deleted and re-run.
+3. *A background command with a 10-minute timeout.* I started the 2-hour run with a timeout of 10
+   minutes; it would have been killed mid-run and orphaned a server on the port. Caught and relaunched.
+
+**Results** (workload B scaled, 3 req/s offered, KV budget 512 MiB, median of 3 seeds, SLO: TTFT
+<= 2 s and TPOT <= 200 ms per request):
+
+| config | goodput req/s | p99 TTFT s | slot util | KV token eff. |
+|---|---|---|---|---|
+| M0 naive | 0.07 | 37.6 | - | - |
+| M1 KV cache | 0.20 | 26.3 | 1.00 | 0.13 |
+| M2 static | 0.80 | 8.9 | 0.17 | 0.16 |
+| M3 continuous | 2.83 | 1.64 | 0.29 | 0.13 |
+| M4 static + paged | 0.93 | 8.3 | 0.22 | 0.95 |
+| M4 continuous + paged | 2.83 | 0.11 | 0.30 | 0.94 |
+| M5 + preemption | 2.83 | 0.14 | 0.36 | 0.94 |
+
+- **Continuous batching is the dominant win**: 0.80 -> 2.83 req/s goodput (3.5x) over static, with
+  p99 TTFT 8.9 s -> 1.6 s. Workload C (high variance) at 2 req/s: 0.53 -> 1.83.
+- **Paging does not change goodput at this offered load** (M3 = M4 full = 2.83); it improves p99
+  TTFT (1.64 s -> 0.11 s) and memory efficiency (0.13 -> 0.94). With 2 GiB, where memory does not
+  bind, the pair is identical (2.83 / 2.83 goodput, 176 vs 175 tok/s).
+- **Paging matters when memory binds or load rises.** KV budget sweep at 3 req/s: at 128 MiB paged
+  gives 2.73 req/s goodput against 0.18 for contiguous; at 256 MiB 2.73 vs 1.00; from 512 MiB up
+  they tie. Load sweep: at 4 req/s paged 3.70 vs contiguous 2.67, at 8 req/s 1.77 vs 0.83.
+  Continuous+paged peaks at 3.70 req/s goodput at 4 req/s offered.
+- **Workload A (uniform, the least flattering) shows nothing separating the batching systems at
+  3 req/s**: static, continuous and both paged rows all reach 2.97 req/s. Static only loses on
+  tail TTFT there (1.49 s vs 0.49 s / 0.09 s). That load is below everyone's capacity, so the table
+  cannot show a difference the load never exposes.
+- **Naive and M1 are far past capacity at 3 req/s** (0.07 and 0.20 req/s), so those rows show
+  saturation, not per-token efficiency.
+- Max-batch sweep (8 req/s offered): 87 / 98 / 166 / 244 / 273 / 285 tok/s for 1 / 2 / 4 / 8 / 16 /
+  32 rows. Going from 8 to 32 rows adds only 17%: the CPU compute ceiling the brief predicted.
+- Block size (256 MiB, 3 req/s): KV efficiency 0.99 / 0.97 / 0.94 / 0.89 / 0.81 for 4 / 8 / 16 /
+  32 / 64; throughput is flat (171 tok/s) because this load is below capacity, so the sweep cannot
+  rank sizes on speed. The M4 burst benchmark is better evidence: 16-32 is fine, 64 wastes memory.
+- Past saturation: p99 TTFT of the full system is 0.21 s up to 4 req/s and 12.3 s at 8 req/s
+  (about twice capacity); the queue cap rejects a median 25 requests per run there. Latency does
+  degrade sharply; it stays bounded, nothing crashes and nothing is left unfinished.
+- Long-prefill stall: the worst inter-token gap seen by ordinary requests was 95 ms without and
+  332 ms with one 800-token prompt (median of 3 seeds): one stall, not a distribution shift.
+
+**Deviations from the plan, all stated on the page:** workload lengths scaled down ~3x; 60-90
+requests per run rather than a few hundred (3 seeds each; sweeps 2 seeds); one admission-control
+queue cap (64) for every variant; the ablation budget (512 MiB) was fixed before measuring and the
+budget sweep and 2 GiB rows show the cases where it does not matter.
+
+**Done criteria check:** page built (`make results`) with the headline chart, ablation tables for
+all three workloads, block-size sweep, memory-budget sweep, overload chart, methodology and
+limitations; `./scripts/run_bench.sh` regenerates every JSON. Not verified: a stranger cloning the
+repo on another machine; only this machine was used.
+
 ---
 
 ## Milestone summary table
@@ -351,4 +432,4 @@ write-up.
 | M3 continuous batching | 2026-09-19 | 231 vs 170 tok/s saturated (+36%), slot util 0.94 vs 0.43, p99 TTFT 0.70 s vs 4.06 s at 4 req/s | continuous batching pads 39% of attention width; one 800-token prefill doubled the worst token gap |
 | M4 paged cache | 2026-09-19 | 2.9x throughput at 128 MiB, KV efficiency 0.95 vs 0.12 | paged is 8-18% slower when memory is plentiful (gather cost) |
 | M5 preemption | 2026-09-19 | all requests finish at 3x capacity; latency plateaus ~5-8 s p99 TTFT | preemption almost never fired; worst-case admission did as well |
-| M6 benchmarks + page | | | |
+| M6 benchmarks + page | 2026-09-19 | continuous batching 3.5x goodput over static (2.83 vs 0.80 req/s); paging wins only when memory binds | the harness broke three ways (double runs, zombie requests, timeout); the engine did not |

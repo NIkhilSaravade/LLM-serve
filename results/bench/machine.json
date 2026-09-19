@@ -1,0 +1,10 @@
+{
+  "cpu": "Intel(R) Core(TM) i7-14700K",
+  "logical_cores": 28,
+  "ram_gib": 31.7,
+  "torch": "2.14.0+cpu",
+  "torch_threads_used_by_server": 4,
+  "python": "3.11.9",
+  "os": "Windows-10-10.0.26200-SP0",
+  "go": "go version go1.26.4 windows/amd64"
+}

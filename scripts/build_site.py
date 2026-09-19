@@ -112,6 +112,43 @@ def headline(agg: dict) -> str:
             f"Medians of 3 seeds; ranges are shown in the tables.</p>")
 
 
+def overload_text(agg: dict) -> str:
+    rates = sorted(r for (k, w, r) in agg if k == "m5_full" and w == "B")
+    if len(rates) < 2:
+        return ""
+    hi, lo = rates[-1], 4 if ("m5_full", "B", 4) in agg else rates[0]
+    a, b = agg[("m5_full", "B", hi)], agg[("m5_full", "B", lo)]
+    ttft = lambda x: x["ttft_s_p99"]["median"]  # noqa: E731
+    rej = a.get("rejected", {}).get("median", 0)
+    done = a.get("completed", {}).get("median", 0)
+    inc = a.get("incomplete", {}).get("max", 0)
+    tail = ("No request was left unfinished at the cutoff." if inc == 0
+            else f"Up to {inc:.0f} requests per run were still unfinished at the cutoff.")
+    return (f"Up to {lo:g} req/s the full system keeps p99 TTFT at {ttft(b):.2f} s. At {hi:g} req/s (about "
+            f"twice its capacity) p99 TTFT rises to {ttft(a):.1f} s, so latency does degrade sharply past "
+            f"saturation. It stays bounded rather than growing without limit because the queue cap of 64 "
+            f"refuses excess work with HTTP 429: a median of {rej:.0f} requests per run were rejected while "
+            f"{done:.0f} completed. Nothing crashed. {tail}")
+
+
+def stall_text(runs: list) -> str:
+    def worst(label):
+        vals = []
+        for r in runs:
+            if r["label"] == label and r.get("itl_events"):
+                vals.append(max(g for _, g in r["itl_events"]))
+        return sorted(vals)
+    base, inj = worst("stall_baseline"), worst("stall_injected")
+    if not base or not inj:
+        return "One 800-token prompt arrives into steady load. Prefill is not chunked."
+    mid = lambda v: v[len(v) // 2]  # noqa: E731
+    return (f"One 800-token prompt arrives at t=15 s into steady 2 req/s load. Prefill is not chunked, so every "
+            f"running request waits for it. The largest gap between two tokens seen by ordinary requests was "
+            f"{mid(base) * 1000:.0f} ms without the long prompt and {mid(inj) * 1000:.0f} ms with it (median of "
+            f"{len(inj)} seeds). It is one stall of a few hundred milliseconds, visible as a single outlier "
+            f"rather than a shift in the whole distribution.")
+
+
 CSS = """
 :root{--bg:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--rule:#e1e0d9;--accent:#2a78d6}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--rule:#2c2c2a;--accent:#3987e5}}
@@ -165,7 +202,7 @@ def main() -> None:
 {img('throughput_vs_load', 'Output tokens per second versus offered load.')}
 {img('ttft_vs_load', 'p99 time to first token versus offered load (log scale). The dashed line is the 2 s SLO.')}
 <h3>Past saturation</h3>
-<p>Beyond capacity the full system does not crash or stall: it sheds load at the queue cap and latency degrades instead of exploding. Requests are refused with HTTP 429 rather than queued forever.</p>
+<p>{overload_text(agg)}</p>
 {img('overload', 'Overload behaviour of continuous + paged with preemption and admission control.')}
 
 <h2>Sweeps</h2>
@@ -173,7 +210,7 @@ def main() -> None:
 {img('budget_sweep', 'Throughput versus KV memory budget: contiguous slots against paged blocks.')}
 {img('maxbatch', 'Throughput versus maximum batch size at 8 req/s offered.')}
 <h3>Long-prefill stall</h3>
-<p>One 800-token prompt arrives into steady load. Prefill is not chunked, so every running request waits for it.</p>
+<p>{stall_text(runs)}</p>
 {img('stall', 'Inter-token gaps seen by ordinary requests, with and without one long prompt.')}
 
 <h2 id=methodology>Methodology</h2>
