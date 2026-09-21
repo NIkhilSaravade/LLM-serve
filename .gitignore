@@ -11,5 +11,4 @@ site-src/.shots/
 site-src/test-results/
 results/plots/
 /site/
-# design notes, build log and runbooks are kept offline
-/docs/
+
