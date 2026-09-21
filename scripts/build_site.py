@@ -99,6 +99,10 @@ def facts() -> dict:
         tests = int(m.group(1)) if m else None
     except Exception:
         pass
+    # Writing `null` here once let a run with the wrong Python (no pytest) commit a page whose facts CI then
+    # rejected. A page that cannot state its own test count is not publishable, so stop instead.
+    if tests is None:
+        raise SystemExit("could not collect the test count (is pytest installed in the Python running this? use the venv)")
     alerts = yaml.safe_load((ROOT / "deploy" / "prometheus" / "alerts.yml").read_text(encoding="utf-8"))["groups"]
     rules = [r for g in alerts for r in g["rules"]]
     dash = json.loads((ROOT / "deploy" / "grafana" / "dashboards" / "llm-serve.json").read_text(encoding="utf-8"))
